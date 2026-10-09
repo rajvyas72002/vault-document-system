@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://vault:change_me@localhost:5432/vault"
     ai_mode: Literal["mock", "real"] = "mock"
     max_upload_mb: int = 20
+    storage_dir: str = "storage"
 
 
 @lru_cache

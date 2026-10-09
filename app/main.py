@@ -1,7 +1,10 @@
 from fastapi import Depends, FastAPI
+
 from app.config import Settings, get_settings
+from app.routers import documents
 
 app = FastAPI(title="Vault Document System")
+app.include_router(documents.router)
 
 
 @app.get("/health")
