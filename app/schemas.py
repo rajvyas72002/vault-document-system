@@ -34,3 +34,20 @@ class DocumentStatus(BaseModel):
     status: str
     error_message: Optional[str] = None
     updated_at: datetime
+
+
+class ChunkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chunk_index: int
+    page_number: Optional[int] = None
+    char_count: int
+    text: str
+
+
+class ChunkList(BaseModel):
+    items: List[ChunkOut]
+    total: int
+    limit: int
+    offset: int

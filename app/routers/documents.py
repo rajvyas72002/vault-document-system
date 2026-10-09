@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.models import Document
-from app.schemas import DocumentList, DocumentOut, DocumentStatus
+from app.models import Document, DocumentChunk
+from app.processing import process_document
+from app.schemas import ChunkList, DocumentList, DocumentOut, DocumentStatus
 from app.storage import save_upload
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -83,3 +84,35 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
 @router.get("/{document_id}/status", response_model=DocumentStatus)
 def get_document_status(document_id: uuid.UUID, db: Session = Depends(get_db)):
     return _get_or_404(db, document_id)
+
+
+@router.post("/{document_id}/process", response_model=DocumentOut)
+def process(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Extract text and build chunks. Also works as a retry for failed documents.
+
+    Runs inline for now; a Celery worker will call the same function later.
+    """
+    doc = _get_or_404(db, document_id)
+    if doc.status == "processing":
+        raise HTTPException(409, "Document is already being processed.")
+    return process_document(db, doc.id, settings)
+
+
+@router.get("/{document_id}/chunks", response_model=ChunkList)
+def list_chunks(
+    document_id: uuid.UUID,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    _get_or_404(db, document_id)
+    where = DocumentChunk.document_id == document_id
+    items = db.scalars(
+        select(DocumentChunk).where(where).order_by(DocumentChunk.chunk_index).limit(limit).offset(offset)
+    ).all()
+    total = db.scalar(select(func.count()).select_from(DocumentChunk).where(where)) or 0
+    return ChunkList(items=items, total=total, limit=limit, offset=offset)

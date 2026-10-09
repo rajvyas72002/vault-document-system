@@ -4,7 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,3 +47,20 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DocumentChunk(Base):
+    """One searchable piece of a document. Each chunk keeps its page number for citations."""
+
+    __tablename__ = "document_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "chunk_index", name="uq_chunk_document_index"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer)               # order within the document
+    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # None for DOCX
+    text: Mapped[str] = mapped_column(Text)
+    char_count: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
