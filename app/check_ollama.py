@@ -28,10 +28,18 @@ def main() -> None:
         emb = OllamaEmbedder(client, s.ollama_embed_model, s.ollama_embed_doc_prefix, s.ollama_embed_query_prefix)
         vectors = emb.embed_documents(["Initial waiting period: 30 days."])
         line(True, f"embedding works, vector length {len(vectors[0])}")
-        a, b = emb.embed_query("how long is the waiting period?"), vectors[0]
-        dot = sum(x * y for x, y in zip(a, b))
-        sim = dot / ((sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5))
-        print(f"      similarity of a related question and passage: {sim:.2f} (compare with vector_min_similarity={s.vector_min_similarity})")
+        def sim(question: str, passage: str) -> float:
+            a, b = emb.embed_query(question), emb.embed_documents([passage])[0]
+            dot = sum(x * y for x, y in zip(a, b))
+            return dot / ((sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5))
+
+        print("      similarity examples (use them to pick vector_min_similarity, now %.2f):" % s.vector_min_similarity)
+        print("        related   : %.2f  'how long is the waiting period?' vs 'Initial waiting period: 30 days.'"
+              % sim("how long is the waiting period?", "Initial waiting period: 30 days."))
+        print("        synonyms  : %.2f  'does it cover cosmetic surgery?' vs 'Cosmetic procedures are excluded.'"
+              % sim("does it cover cosmetic surgery?", "Cosmetic procedures are excluded."))
+        print("        unrelated : %.2f  'what is the capital of France?' vs 'Initial waiting period: 30 days.'"
+              % sim("what is the capital of France?", "Initial waiting period: 30 days."))
     except AIServiceError as exc:
         line(False, f"embedding failed: {exc}")
     try:
