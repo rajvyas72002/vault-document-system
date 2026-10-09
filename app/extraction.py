@@ -27,7 +27,12 @@ def extract_pages(path: str) -> List[PageText]:
 
 def _extract_pdf(path: str) -> List[PageText]:
     with pymupdf.open(path) as pdf:
-        return [PageText(i + 1, page.get_text()) for i, page in enumerate(pdf)]
+        pages = []
+        for i, page in enumerate(pdf):
+            # "blocks" keeps paragraphs and headings apart, so we keep that structure
+            blocks = [b[4] for b in page.get_text("blocks", sort=True) if b[6] == 0]
+            pages.append(PageText(i + 1, "\n\n".join(blocks)))
+        return pages
 
 
 def _extract_docx(path: str) -> List[PageText]:
@@ -38,4 +43,4 @@ def _extract_docx(path: str) -> List[PageText]:
             cells = [c.text.strip() for c in row.cells if c.text.strip()]
             if cells:
                 parts.append(" | ".join(cells))
-    return [PageText(None, "\n".join(parts))]
+    return [PageText(None, "\n\n".join(parts))]

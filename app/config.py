@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     chunk_size: int = 800      # characters per chunk
     chunk_overlap: int = 150   # characters shared between neighbouring chunks
+    retrieval_top_k: int = 5   # how many chunks to retrieve per question
+    min_coverage: float = 0.5  # share of the question's key terms a passage must match
 
 
 @lru_cache

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentOut(BaseModel):
@@ -51,3 +51,43 @@ class ChunkList(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=1000)
+    document_ids: Optional[List[uuid.UUID]] = None  # omit to search all processed documents
+
+
+class SearchRequest(AskRequest):
+    top_k: int = Field(5, ge=1, le=20)
+
+
+class CitationOut(BaseModel):
+    document_id: uuid.UUID
+    document_name: str
+    page_number: Optional[int] = None
+    chunk_id: uuid.UUID
+    quote: str
+
+
+class AskResponse(BaseModel):
+    answer: str
+    answered: bool
+    citations: List[CitationOut]
+    generated_by: str
+    note: str
+
+
+class PassageOut(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_name: str
+    page_number: Optional[int] = None
+    score: float
+    coverage: float
+    text: str
+
+
+class SearchResponse(BaseModel):
+    retrieval_method: str
+    passages: List[PassageOut]
