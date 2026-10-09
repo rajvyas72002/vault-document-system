@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -63,4 +64,8 @@ class DocumentChunk(Base):
     page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # None for DOCX
     text: Mapped[str] = mapped_column(Text)
     char_count: Mapped[int] = mapped_column(Integer)
+    # Vector for semantic search. embedding_model records WHICH model made it: vectors from
+    # different models are not comparable, so retrieval only uses matching ones.
+    embedding: Mapped[Optional[List[float]]] = mapped_column(JSON(none_as_null=True), nullable=True)
+    embedding_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

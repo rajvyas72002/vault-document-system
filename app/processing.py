@@ -1,18 +1,22 @@
 import logging
 import uuid
+from typing import Optional
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.chunking import chunk_pages
 from app.config import Settings
+from app.embeddings import Embedder
+from app.errors import AIServiceError
 from app.extraction import ExtractionError, extract_pages
 from app.models import Document, DocumentChunk
 
 log = logging.getLogger(__name__)
 
 
-def process_document(db: Session, document_id: uuid.UUID, settings: Settings) -> Document:
+def process_document(db: Session, document_id: uuid.UUID, settings: Settings,
+                     embedder: Optional[Embedder] = None) -> Document:
     """pending -> processing -> completed | failed. Safe to run again (it replaces old chunks).
 
     Kept free of FastAPI so a Celery task can call it unchanged later.
@@ -34,7 +38,7 @@ def process_document(db: Session, document_id: uuid.UUID, settings: Settings) ->
         chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
 
         db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))  # makes retries safe
-        db.add_all(
+        rows = [
             DocumentChunk(
                 document_id=doc.id,
                 chunk_index=c.chunk_index,
@@ -43,7 +47,19 @@ def process_document(db: Session, document_id: uuid.UUID, settings: Settings) ->
                 char_count=len(c.text),
             )
             for c in chunks
-        )
+        ]
+        warning = None
+        if embedder is not None:
+            try:
+                vectors = embedder.embed_documents([r.text for r in rows])
+                for row, vector in zip(rows, vectors):
+                    row.embedding, row.embedding_model = vector, embedder.model_name
+            except AIServiceError as exc:
+                # Not fatal: keyword search still works. Re-run /process to try the embeddings again.
+                log.warning("Embedding failed for document %s: %s", document_id, exc)
+                warning = f"Completed without embeddings (keyword search still works): {exc}"
+        db.add_all(rows)
+        doc.error_message = warning
         doc.page_count = len(pages) if doc.stored_path.lower().endswith(".pdf") else None
         doc.status = "completed"
         db.commit()

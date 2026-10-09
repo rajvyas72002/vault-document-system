@@ -5,8 +5,8 @@ from typing import List, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.providers import LLMProvider, get_llm_provider
-from app.retrieval import LexicalRetriever, Retriever
+from app.providers import ChatTurn, LLMProvider
+from app.retrieval import Retriever
 
 NOT_FOUND_TEXT = "The uploaded documents do not specify an answer to this question."
 
@@ -34,19 +34,18 @@ def answer_question(
     question: str,
     document_ids: Optional[Sequence[uuid.UUID]],
     settings: Settings,
-    retriever: Optional[Retriever] = None,
-    provider: Optional[LLMProvider] = None,
+    retriever: Retriever,
+    provider: LLMProvider,
+    history: Sequence[ChatTurn] = (),
 ) -> AnswerResult:
     """retrieve -> (enough evidence?) -> generate -> attach citations.
 
-    If nothing relevant is found we say so; we never ask the provider to guess."""
-    retriever = retriever or LexicalRetriever()
-    provider = provider or get_llm_provider(settings.ai_mode)
-
+    If nothing relevant is found, or the provider cannot ground its answer, we say so."""
     retrieved = retriever.search(db, question, document_ids, settings.retrieval_top_k)
-    result = provider.generate(question, retrieved, settings.min_coverage) if retrieved.chunks else None
+    result = provider.generate(question, retrieved, settings.min_coverage, history) if retrieved.chunks else None
     if result is None:
-        return AnswerResult(NOT_FOUND_TEXT, False, [], "no answer generated", "No passage matched the question well enough.")
+        return AnswerResult(NOT_FOUND_TEXT, False, [], "no answer generated",
+                            "No passage supported an answer to the question.")
 
     citations = [
         CitationData(e.chunk.document_id, e.chunk.document_name, e.chunk.page_number, e.chunk.chunk_id, e.sentence)

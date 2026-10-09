@@ -1,11 +1,19 @@
 from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 
 from app.config import Settings, get_settings
+from app.errors import AIServiceError
 from app.routers import documents, qa
 
 app = FastAPI(title="Vault Document System")
 app.include_router(documents.router)
 app.include_router(qa.router)
+
+
+@app.exception_handler(AIServiceError)
+async def ai_service_error_handler(request, exc: AIServiceError):
+    """Embedding / LLM problems (Ollama down, model missing, bad config) become a clear 503."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.get("/health")

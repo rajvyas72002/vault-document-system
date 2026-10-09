@@ -12,7 +12,10 @@ from app.main import app
 
 @pytest.fixture()
 def client(tmp_path):
-    """Isolated app: in-memory SQLite + temp storage folder. No PostgreSQL needed."""
+    """Isolated app: in-memory SQLite + temp storage folder. No PostgreSQL, no Ollama.
+
+    ai_mode is forced to "mock" so a developer's .env (for example AI_MODE=ollama) can never
+    make the test suite call a real model."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -25,6 +28,10 @@ def client(tmp_path):
             db.close()
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_settings] = lambda: Settings(storage_dir=str(tmp_path / "storage"), max_upload_mb=1)
-    yield TestClient(app)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        storage_dir=str(tmp_path / "storage"), max_upload_mb=1, ai_mode="mock"
+    )
+    test_client = TestClient(app)
+    test_client.session_factory = TestSession  # lets tests inspect the database directly
+    yield test_client
     app.dependency_overrides.clear()

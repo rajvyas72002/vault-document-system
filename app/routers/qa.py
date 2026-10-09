@@ -1,5 +1,5 @@
-from typing import List, Optional
 import uuid
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.deps import get_provider, get_retriever
 from app.models import Document
-from app.providers import ConfigurationError
+from app.providers import LLMProvider
 from app.qa import answer_question
-from app.retrieval import LexicalRetriever
+from app.retrieval import Retriever
 from app.schemas import AskRequest, AskResponse, CitationOut, PassageOut, SearchRequest, SearchResponse
 
 router = APIRouter(tags=["question answering"])
@@ -30,24 +31,27 @@ def validate_scope(db: Session, document_ids: Optional[List[uuid.UUID]]) -> None
 
 
 @router.post("/search", response_model=SearchResponse)
-def search(body: SearchRequest, db: Session = Depends(get_db)):
-    """Retrieval only (no answer). Useful for seeing exactly what the answerer is given."""
+def search(body: SearchRequest, db: Session = Depends(get_db), retriever: Retriever = Depends(get_retriever)):
+    """Retrieval only (no answer). Shows exactly which passages the answerer would be given."""
     validate_scope(db, body.document_ids)
-    result = LexicalRetriever().search(db, body.question, body.document_ids, body.top_k)
+    result = retriever.search(db, body.question, body.document_ids, body.top_k)
     return SearchResponse(
-        retrieval_method="lexical-bm25 (keyword matching, not semantic)",
+        retrieval_method=retriever.method,
         passages=[PassageOut(**{k: getattr(c, k) for k in PassageOut.model_fields}) for c in result.chunks],
     )
 
 
 @router.post("/ask", response_model=AskResponse)
-def ask(body: AskRequest, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
-    """One-off question, no chat history. Chat sessions (next step) reuse the same pipeline."""
+def ask(
+    body: AskRequest,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    retriever: Retriever = Depends(get_retriever),
+    provider: LLMProvider = Depends(get_provider),
+):
+    """One-off question, no chat history. Chat sessions reuse the same pipeline."""
     validate_scope(db, body.document_ids)
-    try:
-        result = answer_question(db, body.question, body.document_ids, settings)
-    except ConfigurationError as exc:
-        raise HTTPException(503, str(exc))
+    result = answer_question(db, body.question, body.document_ids, settings, retriever, provider)
     return AskResponse(
         answer=result.answer,
         answered=result.answered,

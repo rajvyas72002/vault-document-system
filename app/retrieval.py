@@ -8,11 +8,12 @@ import math
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Protocol, Sequence
+from typing import Dict, List, Optional, Protocol, Sequence, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.embeddings import Embedder
 from app.models import Document, DocumentChunk
 from app.textutil import tokenize
 
@@ -38,6 +39,8 @@ class SearchResult:
 
 
 class Retriever(Protocol):
+    method: str
+
     def search(
         self, db: Session, query: str, document_ids: Optional[Sequence[uuid.UUID]], top_k: int
     ) -> SearchResult: ...
@@ -46,6 +49,8 @@ class Retriever(Protocol):
 class LexicalRetriever:
     """Loads chunks of completed documents and ranks them in Python.
     Fine for a demo; for thousands of documents use PostgreSQL full-text search or pgvector."""
+
+    method = "lexical-bm25 (keyword matching, not semantic)"
 
     def search(self, db, query, document_ids=None, top_k=5) -> SearchResult:
         rows = db.execute(
@@ -96,3 +101,82 @@ class LexicalRetriever:
                 )
         scored.sort(key=lambda c: c.score, reverse=True)
         return SearchResult(scored[:top_k], weights)
+
+
+def coverage_of(text: str, weights: Dict[str, float]) -> float:
+    """Share of the question's rarity-weighted key terms that occur in `text`."""
+    total = sum(weights.values()) or 1.0
+    terms = set(tokenize(text))
+    return round(sum(w for t, w in weights.items() if t in terms) / total, 4)
+
+
+def cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+class VectorRetriever:
+    """Semantic search: compare the question's embedding with each stored chunk embedding.
+    Only chunks embedded by the SAME model are compared. Pure Python is fine for thousands of
+    chunks; beyond that use pgvector or a vector database."""
+
+    def __init__(self, embedder: Embedder, min_similarity: float = 0.5):
+        self.embedder = embedder
+        self.min_similarity = min_similarity
+        self.method = f"vector ({embedder.model_name})"
+
+    def search(self, db, query, document_ids=None, top_k=5) -> SearchResult:
+        rows = db.execute(
+            select(DocumentChunk, Document.original_filename)
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(Document.status == "completed", DocumentChunk.embedding_model == self.embedder.model_name)
+        ).all()
+        if not rows:
+            return SearchResult([])
+        wanted = set(document_ids) if document_ids else None
+        query_vector = self.embedder.embed_query(query)
+        scored = []
+        for chunk, name in rows:
+            if (wanted is not None and chunk.document_id not in wanted) or not chunk.embedding:
+                continue
+            sim = cosine(query_vector, chunk.embedding)
+            if sim >= self.min_similarity:
+                scored.append(RetrievedChunk(chunk.id, chunk.document_id, name, chunk.page_number,
+                                             chunk.chunk_index, chunk.text, round(sim, 4), 0.0))
+        scored.sort(key=lambda c: c.score, reverse=True)
+        return SearchResult(scored[:top_k])
+
+
+def reciprocal_rank_fusion(rankings: Sequence[Sequence[uuid.UUID]], k: int = 60) -> Dict[uuid.UUID, float]:
+    """Merge several ranked lists using ranks only: score = sum(1 / (k + rank)).
+    Ranks are used because BM25 scores and cosine similarities are on different scales."""
+    fused: Dict[uuid.UUID, float] = {}
+    for ranking in rankings:
+        for rank, item in enumerate(ranking, start=1):
+            fused[item] = fused.get(item, 0.0) + 1.0 / (k + rank)
+    return fused
+
+
+class HybridRetriever:
+    """Keyword + semantic search, merged with Reciprocal Rank Fusion."""
+
+    def __init__(self, lexical: LexicalRetriever, vector: VectorRetriever, pool: int = 20):
+        self.lexical, self.vector, self.pool = lexical, vector, pool
+        self.method = f"hybrid: lexical-bm25 + {vector.method}, fused with reciprocal rank fusion"
+
+    def search(self, db, query, document_ids=None, top_k=5) -> SearchResult:
+        lex = self.lexical.search(db, query, document_ids, self.pool)
+        vec = self.vector.search(db, query, document_ids, self.pool)
+        by_id = {c.chunk_id: c for c in lex.chunks}
+        for c in vec.chunks:
+            by_id.setdefault(c.chunk_id, c)
+        fused = reciprocal_rank_fusion([[c.chunk_id for c in lex.chunks], [c.chunk_id for c in vec.chunks]])
+        ranked = sorted(fused, key=fused.get, reverse=True)[:top_k]
+        chunks = []
+        for chunk_id in ranked:
+            c = by_id[chunk_id]
+            chunks.append(RetrievedChunk(c.chunk_id, c.document_id, c.document_name, c.page_number, c.chunk_index,
+                                         c.text, round(fused[chunk_id], 6), coverage_of(c.text, lex.term_weights)))
+        return SearchResult(chunks, lex.term_weights)

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.deps import get_embedder
+from app.embeddings import Embedder
 from app.models import Document, DocumentChunk
 from app.processing import process_document
 from app.schemas import ChunkList, DocumentList, DocumentOut, DocumentStatus
@@ -91,15 +93,16 @@ def process(
     document_id: uuid.UUID,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    embedder: Optional[Embedder] = Depends(get_embedder),
 ):
-    """Extract text and build chunks. Also works as a retry for failed documents.
+    """Extract text, build chunks and (in Ollama mode) embed them. Also works as a retry for failed documents.
 
     Runs inline for now; a Celery worker will call the same function later.
     """
     doc = _get_or_404(db, document_id)
     if doc.status == "processing":
         raise HTTPException(409, "Document is already being processed.")
-    return process_document(db, doc.id, settings)
+    return process_document(db, doc.id, settings, embedder)
 
 
 @router.get("/{document_id}/chunks", response_model=ChunkList)
