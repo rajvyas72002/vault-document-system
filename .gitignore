@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 storage/
 .pytest_cache/
+
+# the company case-study PDF is not part of the deliverable
+*Case Study*.pdf
+.next/
+node_modules/
