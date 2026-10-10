@@ -8,7 +8,7 @@ Last updated: 2026-10-10 (docs written; 131 tests passing)
 |---|---|---|
 | Intelligent upload handler | DONE | extension allowlist, magic bytes, size limit, SHA-256 dedup, safe filenames |
 | Smart document analysis (AI summary/insights) | DONE | summary, key points, category, tags; LLM output verified (verbatim key points, no invented numbers), extractive fallback. Not yet auto-run after processing |
-| Asynchronous processing pipeline | DONE | inline / background / celery, 202 + GET /jobs/{id}, retries safe, queue-down => 503. Verified by hand with Celery + Memurai on Windows (one job end to end). Stop-worker and stop-Redis demos not yet rehearsed |
+| Asynchronous processing pipeline | DONE | inline / background / celery, 202 + GET /jobs/{id}, retries safe, queue-down => 503. Verified by hand with Celery + Memurai on Windows (one job end to end). Failure demos rehearsed by hand: worker down => job waits then completes; Redis down => 503 + failed job record; Redis back => worker reconnects by itself |
 | Upload & ingestion API | DONE | POST /documents/upload |
 | Document retrieval API | DONE | list, detail, status, chunks |
 | AI insights API | DONE | POST + GET /documents/{id}/insights |
