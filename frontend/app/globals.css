@@ -48,3 +48,5 @@ th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spa
   background: var(--bg); font-size: 13px; }
 .tag { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 8px; border-radius: 999px;
   background: var(--bg); border: 1px solid var(--line); font-size: 12px; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-bottom: 6px; word-break: break-word; }
+.check input { margin-top: 3px; flex: none; }

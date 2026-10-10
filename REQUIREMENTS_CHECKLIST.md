@@ -1,7 +1,7 @@
 # Requirements checklist (traced to the case study PDF)
 
 Status: DONE = built and tested | PARTIAL = works but incomplete | MOCK = fake/placeholder | TODO = not started
-Last updated: 2026-10-10 (docs written; 131 tests passing)
+Last updated: 2026-10-10 (131 tests passing; Celery and frontend verified by hand)
 
 ## Backend components
 | PDF requirement | Status | Notes |
@@ -15,7 +15,7 @@ Last updated: 2026-10-10 (docs written; 131 tests passing)
 | Start chat session | DONE | POST /chats (optional document scope) |
 | Ask question | DONE | POST /chats/{id}/messages (and one-off POST /ask), cited and verified |
 | Get chat history | DONE | GET /chats/{id}/history, citations stored per answer |
-| Multi-turn context | DONE | last 3 turns sent to the LLM; follow-ups searched with the previous question added (heuristic, not an LLM rewrite) |
+| Multi-turn context | DONE | last 3 turns sent to the LLM; follow-ups rewritten into a standalone question by the LLM (keyword fallback if it fails); one level deep |
 | Document statistics API | DONE | GET /metrics/documents |
 | Processing metrics API | DONE | GET /metrics/processing (success rate, avg/p95 duration, failure reasons, stuck docs) |
 
@@ -42,11 +42,11 @@ Last updated: 2026-10-10 (docs written; 131 tests passing)
 ## Deliverables
 | Item | Status |
 |---|---|
-| Working backend | PARTIAL |
+| Working backend | DONE | verified with real Ollama, PostgreSQL, Celery + Redis |
 | Git repository | DONE (local; GitHub push TODO) |
 | README.md with architecture + assumptions | DONE | architecture diagrams, setup, API, assumptions, honest limitations |
 | AI_USAGE.md | DONE | has ONE placeholder line for other AI tools Raj used: fill in or delete |
-| Tests (pytest) | DONE: 69 passed, 1 xfailed (known synonym limitation in mock mode) |
+| Tests (pytest) | DONE: 131 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
 | Demo of document chat | PARTIAL | DEMO.md script written; live rehearsal still to do |
 
 ## Optional / bonus
@@ -57,7 +57,7 @@ Last updated: 2026-10-10 (docs written; 131 tests passing)
 | Follow-up question suggestions | TODO |
 | Summary customisation | DONE (length, focus, tone) |
 | Auto categorisation / tagging | DONE |
-| Frontend (Next.js, optional) | DONE (minimal) | 4 pages: documents, chat, insights, metrics. Builds cleanly; API calls replayed with the browser origin (CORS ok). No automated frontend tests; not yet clicked through in a real browser |
+| Frontend (Next.js, optional) | DONE (minimal) | 4 pages: documents, chat, insights, metrics. Builds cleanly; clicked through in a real browser (documents, chat with citation, insights, metrics all work). No automated frontend tests |
 | Streaming responses | TODO |
 | Health endpoint | DONE (/health) |
 | Cost / token tracking | TODO |

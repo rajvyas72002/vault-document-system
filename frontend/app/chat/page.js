@@ -115,13 +115,13 @@ export default function ChatPage() {
             <h2>Scope</h2>
             {docs.length === 0 && <div className="muted">No processed documents yet.</div>}
             {docs.map((d) => (
-              <label key={d.id} style={{ display: "block", fontSize: 13 }}>
+              <label key={d.id} className="check">
                 <input
                   type="checkbox"
                   checked={!!selected[d.id]}
                   onChange={(e) => setSelected((s) => ({ ...s, [d.id]: e.target.checked }))}
-                />{" "}
-                {d.original_filename}
+                />
+                <span>{d.original_filename}</span>
               </label>
             ))}
             <p className="muted">None ticked = search all documents.</p>
