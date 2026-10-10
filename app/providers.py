@@ -111,6 +111,8 @@ Rules:
 5. Support every answer with exact quotes: each quote must be copied word for word from one passage.
 6. Write "answer" as one complete sentence that restates the question's subject. Include the specific figures from the quotes.
    Good: "No. Cosmetic procedures are excluded from coverage." Bad: "no".
+7. Earlier chat turns are only for understanding words like "it", "that" or "the other one". Always answer the LATEST
+   question using the passages in <context>, and always reply in the JSON shape below, never in plain text.
 
 Reply with JSON only, in this exact shape:
 {"supported": true or false, "answer": "one complete sentence", "quotes": [{"passage": 1, "text": "exact words copied from passage 1"}]}"""

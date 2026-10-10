@@ -37,11 +37,14 @@ def answer_question(
     retriever: Retriever,
     provider: LLMProvider,
     history: Sequence[ChatTurn] = (),
+    retrieval_query: Optional[str] = None,
 ) -> AnswerResult:
     """retrieve -> (enough evidence?) -> generate -> attach citations.
 
+    retrieval_query lets a chat follow-up search with earlier context while the provider still sees
+    the user's own words plus the history.
     If nothing relevant is found, or the provider cannot ground its answer, we say so."""
-    retrieved = retriever.search(db, question, document_ids, settings.retrieval_top_k)
+    retrieved = retriever.search(db, retrieval_query or question, document_ids, settings.retrieval_top_k)
     result = provider.generate(question, retrieved, settings.min_coverage, history) if retrieved.chunks else None
     if result is None:
         return AnswerResult(NOT_FOUND_TEXT, False, [], "no answer generated",

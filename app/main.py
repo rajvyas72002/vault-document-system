@@ -3,11 +3,14 @@ from fastapi.responses import JSONResponse
 
 from app.config import Settings, get_settings
 from app.errors import AIServiceError
-from app.routers import documents, qa
+from app.routers import chats, documents, insights, metrics, qa
 
 app = FastAPI(title="Vault Document System")
 app.include_router(documents.router)
 app.include_router(qa.router)
+app.include_router(chats.router)
+app.include_router(insights.router)
+app.include_router(metrics.router)
 
 
 @app.exception_handler(AIServiceError)

@@ -5,6 +5,8 @@ from typing import Optional
 from fastapi import Depends
 
 from app.config import Settings, get_settings
+from app.conversation import OllamaRewriter
+from app.insights import InsightGenerator, get_insight_generator_for
 from app.embeddings import Embedder, OllamaEmbedder
 from app.ollama import OllamaClient
 from app.providers import LLMProvider, get_llm_provider
@@ -28,3 +30,14 @@ def get_retriever(settings: Settings = Depends(get_settings), embedder: Optional
 
 def get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
     return get_llm_provider(settings)
+
+
+def get_rewriter(settings: Settings = Depends(get_settings)) -> Optional[OllamaRewriter]:
+    """Rewrites chat follow-ups into standalone questions. Only available with a real LLM."""
+    if settings.ai_mode == "ollama":
+        return OllamaRewriter(OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds), settings.ollama_chat_model)
+    return None
+
+
+def get_insight_generator(settings: Settings = Depends(get_settings)) -> InsightGenerator:
+    return get_insight_generator_for(settings)

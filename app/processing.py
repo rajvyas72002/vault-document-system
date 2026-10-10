@@ -1,5 +1,7 @@
 import logging
+import time
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import delete
@@ -10,24 +12,33 @@ from app.config import Settings
 from app.embeddings import Embedder
 from app.errors import AIServiceError
 from app.extraction import ExtractionError, extract_pages
-from app.models import Document, DocumentChunk
+from app.models import Document, DocumentChunk, ProcessingJob
 
 log = logging.getLogger(__name__)
 
 
 def process_document(db: Session, document_id: uuid.UUID, settings: Settings,
-                     embedder: Optional[Embedder] = None) -> Document:
+                     embedder: Optional[Embedder] = None, job_id: Optional[uuid.UUID] = None) -> Document:
     """pending -> processing -> completed | failed. Safe to run again (it replaces old chunks).
 
-    Kept free of FastAPI so a Celery task can call it unchanged later.
+    Every run is recorded in processing_jobs (status, duration, chunk count, failure reason).
+    A queue worker passes the job_id it created when the task was queued; otherwise a job is created here.
+    Kept free of FastAPI so a Celery task can call it unchanged.
     """
     doc = db.get(Document, document_id)
     if doc is None:
         raise LookupError(f"Document {document_id} not found")
 
+    job = db.get(ProcessingJob, job_id) if job_id else None
+    if job is None:
+        job = ProcessingJob(document_id=doc.id, kind="process")
+        db.add(job)
+    started = time.perf_counter()
+    job.status, job.started_at = "running", datetime.now(timezone.utc)
     doc.status = "processing"
     doc.error_message = None
     db.commit()
+    job_pk = job.id
 
     try:
         pages = extract_pages(doc.stored_path)
@@ -62,6 +73,8 @@ def process_document(db: Session, document_id: uuid.UUID, settings: Settings,
         doc.error_message = warning
         doc.page_count = len(pages) if doc.stored_path.lower().endswith(".pdf") else None
         doc.status = "completed"
+        job.status, job.finished_at = "succeeded", datetime.now(timezone.utc)
+        job.duration_ms, job.chunk_count = int((time.perf_counter() - started) * 1000), len(rows)
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -72,6 +85,9 @@ def process_document(db: Session, document_id: uuid.UUID, settings: Settings,
         doc = db.get(Document, document_id)
         doc.status = "failed"
         doc.error_message = message[:500]  # user-safe: no server paths or stack traces
+        job = db.get(ProcessingJob, job_pk)
+        job.status, job.finished_at = "failed", datetime.now(timezone.utc)
+        job.duration_ms, job.error_message = int((time.perf_counter() - started) * 1000), message[:500]
         db.commit()
     db.refresh(doc)
     return doc

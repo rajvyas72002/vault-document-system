@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -69,3 +70,84 @@ class DocumentChunk(Base):
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON(none_as_null=True), nullable=True)
     embedding_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatSession(Base):
+    """One conversation. document_ids (optional) limits every question in it to those documents."""
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    document_ids: Mapped[Optional[List[str]]] = mapped_column(JSON(none_as_null=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ChatMessage(Base):
+    """One turn. Assistant turns keep their citations, so history shows where each answer came from."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_chat_message_seq"),
+        CheckConstraint("role IN ('user','assistant')", name="ck_chat_messages_role"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)                      # position in the conversation (1, 2, 3 ...)
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    answered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)   # assistant turns only
+    citations: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
+    generated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # how long the answer took (assistant turns)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+PROCESSING_JOB_STATUSES = ("queued", "running", "succeeded", "failed")
+
+
+class ProcessingJob(Base):
+    """One processing run of one document. Gives us history, durations and failure reasons for the metrics API."""
+
+    __tablename__ = "processing_jobs"
+    __table_args__ = (
+        CheckConstraint("status IN ('queued','running','succeeded','failed')", name="ck_processing_jobs_status"),
+        Index("ix_processing_jobs_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30), default="process")
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    chunk_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class DocumentInsight(Base):
+    """AI-generated understanding of one document. One current row per document; regenerating replaces it."""
+
+    __tablename__ = "document_insights"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    summary: Mapped[str] = mapped_column(Text)
+    key_points: Mapped[list] = mapped_column(JSON)
+    category: Mapped[str] = mapped_column(String(50))
+    tags: Mapped[list] = mapped_column(JSON)
+    options: Mapped[dict] = mapped_column(JSON)       # length / focus / tone that produced this summary
+    generated_by: Mapped[str] = mapped_column(String(100))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
