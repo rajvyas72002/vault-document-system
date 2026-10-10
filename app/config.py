@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # | celery: real queue (Redis + a worker process)
     task_backend: Literal["inline", "background", "celery"] = "inline"
     redis_url: str = "redis://localhost:6379/0"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"   # comma-separated origins allowed to call the API from a browser
     auto_insights: bool = False   # queued processing also generates insights once a document completes
     # --- Ollama (local models) ---
     ollama_base_url: str = "http://localhost:11434"

@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import Settings, get_settings
@@ -6,6 +7,12 @@ from app.errors import AIServiceError
 from app.routers import chats, documents, insights, jobs, metrics, qa
 
 app = FastAPI(title="Vault Document System")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(documents.router)
 app.include_router(qa.router)
 app.include_router(chats.router)
