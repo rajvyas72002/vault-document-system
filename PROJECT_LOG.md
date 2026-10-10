@@ -19,9 +19,10 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 - Built: processing job history, metrics APIs (documents, processing, system), answer latency.
 - Built: async queue with `inline`, `background` and `celery` modes, `202` + job status, redelivery-safe worker, queue-down `503`.
 - Wrote README, AI_USAGE, DEMO, requirements checklist.
+- Verified background mode by hand (202, then job succeeded). Docker Desktop could not start (WSL not installed), so used Memurai as the Redis server: Celery worker received and completed a job end to end.
 - Test count: 131 passed, 1 xfailed (documented limitation).
 
 ## Still open
 - Real LLM provider (`AI_MODE=real`): waiting for company API key and provider name.
-- Verify Celery against a live Redis.
+- Rehearse the failure demos: stop the worker (job stays queued), stop Redis (503).
 - Optional: simple frontend (Next.js), streaming, cost tracking.

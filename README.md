@@ -158,7 +158,7 @@ If you switch `AI_MODE` from `mock` to `ollama` after uploading documents, run `
 ### Running the real queue (Celery + Redis)
 
 ```powershell
-docker run -d --name vault-redis -p 6379:6379 redis:7     # or WSL / Memurai
+docker run -d --name vault-redis -p 6379:6379 redis:7     # or Memurai on Windows (Redis-compatible, no Docker/WSL needed)
 # set TASK_BACKEND=celery in .env
 celery -A app.worker worker --pool=solo --loglevel=info   # second terminal; --pool=solo is required on Windows
 uvicorn app.main:app
@@ -181,7 +181,7 @@ At the last full run: **131 passed, 1 expected failure (xfail)**.
 - Several safety guards were checked by deliberately breaking them and confirming a test fails.
 - The one `xfail` documents a known limitation: **keyword-only search cannot match synonyms** ("cosmetic surgery" vs "cosmetic procedures"). Hybrid mode with embeddings solves it; this is shown by a separate passing test.
 - What the tests do **not** prove: how a real LLM behaves. Real-model behaviour was checked by hand through Swagger (see `DEMO.md`).
-- The Celery worker and Redis path is unit-tested with fakes. It was not part of the automated suite against a live Redis.
+- The Celery worker is unit-tested with fakes (no Redis needed). The live path was verified **by hand** on Windows with Memurai (a Redis-compatible server): `POST /process` returned 202, the worker received and finished the task, and `GET /jobs/{id}` showed `succeeded`. It is not part of the automated suite.
 
 ---
 
@@ -235,6 +235,6 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 - **Follow-ups** are one level deep: a follow-up to a follow-up loses the first question in heuristic mode.
 - **Mock mode** (`AI_MODE=mock`) is keyword-only and handles follow-ups and synonyms poorly. It exists so the app and tests run without any AI.
 - **Cost tracking and rate limiting** are not implemented.
-- **Celery with a live Redis** is implemented and unit-tested with fakes; it should be re-verified in your own environment.
+- **Celery + Redis** was verified by hand on one machine (Windows, Memurai, `--pool=solo`), not in CI. On Windows a single solo worker adds a few seconds of pickup latency; on Linux use the default pool.
 
 See `REQUIREMENTS_CHECKLIST.md` for every requirement in the case study mapped to its status, `AI_USAGE.md` for how AI tools were used, and `DEMO.md` for a demo script.

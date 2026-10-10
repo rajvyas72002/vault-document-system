@@ -52,7 +52,7 @@ About 8 minutes. Wording of LLM answers can vary slightly from run to run; the f
 
 ## 9. Failure handling (optional, strong)
 - Upload a `.txt` file → `415`. Upload a fake PDF (text renamed to `.pdf`) → rejected by magic-byte check.
-- With `TASK_BACKEND=celery`: stop the worker → job stays `queued`; stop Redis → `503` with a clear message.
+- With `TASK_BACKEND=celery`: stop the worker → job stays `queued`; restart the worker → it picks the job up. Stop Redis (or Memurai on Windows) → `503` with a clear message.
 - Stop Ollama → `/ask` returns `503` "Cannot reach Ollama", not a crash.
 
 ## If something breaks live
