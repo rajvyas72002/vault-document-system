@@ -57,7 +57,7 @@ Last updated: 2026-10-10 (docs written; 131 tests passing)
 | Follow-up question suggestions | TODO |
 | Summary customisation | DONE (length, focus, tone) |
 | Auto categorisation / tagging | DONE |
-| Frontend (Next.js, optional) | TODO (only if time remains) |
+| Frontend (Next.js, optional) | DONE (minimal) | 4 pages: documents, chat, insights, metrics. Builds cleanly; API calls replayed with the browser origin (CORS ok). No automated frontend tests; not yet clicked through in a real browser |
 | Streaming responses | TODO |
 | Health endpoint | DONE (/health) |
 | Cost / token tracking | TODO |

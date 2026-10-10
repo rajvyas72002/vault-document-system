@@ -168,6 +168,19 @@ Only job ids travel through Redis. Status, timings and errors live in PostgreSQL
 
 ---
 
+### Frontend (Next.js)
+
+A small Next.js app in `frontend/` (plain JavaScript, no UI library) talks to the API. Pages: **Documents** (upload, process, retry, job polling), **Chat** (multi-turn, verified citations, refusals shown clearly), **Insights** (summary, key points, category, tags with length/tone/focus), **Metrics** (document, processing and answer metrics).
+
+```powershell
+cd frontend
+npm install
+copy .env.example .env.local     # optional, defaults to http://127.0.0.1:8000
+npm run dev                      # http://localhost:3000
+```
+
+The backend must be running; its `CORS_ORIGINS` setting (default `http://localhost:3000`) lets the browser call it. The frontend has no automated tests; it was checked by building it and clicking through every page.
+
 ## Testing
 
 ```powershell
@@ -227,7 +240,7 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 
 **Not done / limitations (honest list):**
 - **Real LLM provider (OpenAI / Claude): not implemented.** `AI_MODE=real` returns a clear configuration error. Waiting for a company API key.
-- **No frontend.** Swagger UI is the interface.
+- **Frontend is minimal and untested by code.** It works against the real API but has no automated tests, no auth, and no streaming.
 - **No authentication or per-user data separation.** Everything is one shared vault.
 - **No streaming responses**, no WebSockets.
 - **Scanned PDFs (no text layer):** rejected with a clear message. OCR is not supported.

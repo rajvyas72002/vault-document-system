@@ -25,4 +25,5 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 ## Still open
 - Real LLM provider (`AI_MODE=real`): waiting for company API key and provider name.
 - Rehearsed failure demos by hand: worker stopped (job stayed queued 86s, then succeeded); Redis stopped (503 after ~4s broker timeout, job marked failed 'Task queue unavailable'); Redis restarted (worker reconnected automatically, new job succeeded).
-- Optional: simple frontend (Next.js), streaming, cost tracking.
+- Built minimal Next.js frontend in frontend/ (documents, chat, insights, metrics) + CORS_ORIGINS setting. Build passes; smoke-tested the same API calls with the browser Origin header.
+- Optional: streaming, cost tracking.

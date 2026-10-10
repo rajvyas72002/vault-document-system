@@ -25,9 +25,6 @@ function Message({ m }) {
         {refused ? " · not found in documents" : ""}
       </div>
       <div>{m.content}</div>
-      {m.searched_for && m.searched_for !== m.question && (
-        <div className="muted">Searched for: {m.searched_for}</div>
-      )}
       <Citations items={m.citations} />
     </div>
   );
