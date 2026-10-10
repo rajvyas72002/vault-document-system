@@ -16,7 +16,7 @@ This project uses AI in two different ways, and they are described separately:
 
 **How I worked**
 
-I am new to PostgreSQL, Redis/Celery and RAG, so I used the assistant as a mentor as well as a code generator. For each step I asked for the reason behind it,
+I used this project to build hands-on experience with PostgreSQL, Redis/Celery and RAG, so I used the assistant as a mentor as well as a code generator. For each step I asked for the reason behind it,
 ran the code on my own machine (Windows, VS Code, PostgreSQL 17, Ollama), pasted real results back, and only moved on when it worked.
 Work was done in small steps: upload → processing → retrieval → LLM answers → chat → insights → metrics → async queue.
 
@@ -44,7 +44,7 @@ Work was done in small steps: upload → processing → retrieval → LLM answer
 
 Lesson: AI-generated code and prompts looked reasonable but needed running against real data to find the problems. Tests with fake models prove the plumbing; only real runs showed model behaviour.
 
-**What I did not verify.** There is no systematic evaluation set for answer quality yet; real-model behaviour was checked by hand on a handful of questions. The Celery path with a live Redis was unit-tested with fakes.
+**What I did not verify.** There is no systematic evaluation set for answer quality yet; real-model behaviour was checked by hand on a handful of questions. The Celery path is unit-tested with fakes; I also ran it by hand against a live Redis-compatible server (Memurai on Windows), including a stopped worker and a stopped Redis, but that is not part of the automated suite. The frontend has no automated tests, and local-model answer latency (tens of seconds on my laptop) has not been tuned.
 
 ---
 
