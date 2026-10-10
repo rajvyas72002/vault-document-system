@@ -12,7 +12,7 @@ This project uses AI in two different ways, and they are described separately:
 **Tools used**
 
 - **Claude (Anthropic)**, used as a coding and design assistant throughout: planning, code, tests, debugging and explanations.
-- Other tools: _[Raj: list any other AI tools you used, for example ChatGPT for concept explanations, and what for. Delete this line if none.]_
+- **ChatGPT (OpenAI)**, used for background research: understanding the case-study requirements and concepts such as vector search before building. It did not write any of the project code.
 
 **How I worked**
 
