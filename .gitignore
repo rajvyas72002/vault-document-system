@@ -9,3 +9,10 @@ storage/
 *Case Study*.pdf
 .next/
 node_modules/
+
+# demo recordings (large, shared as a link, not in the repo)
+demo/
+
+# stray recordings
+*.mp4
+video_arch.png

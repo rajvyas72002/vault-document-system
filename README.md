@@ -187,7 +187,7 @@ The backend must be running; its `CORS_ORIGINS` setting (default `http://localho
 pytest
 ```
 
-At the last full run: **131 passed, 1 expected failure (xfail)**.
+At the last full run: **133 passed, 1 expected failure (xfail)**.
 
 - No test calls a real model or the network. Ollama is replaced by scripted fakes (`httpx.MockTransport`), so the suite is fast and deterministic.
 - The `.env` file can never leak into tests: the test client forces `ai_mode="mock"`.
@@ -236,7 +236,7 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 
 ## What is and is not done
 
-**Done and tested:** upload, processing, chunking, embeddings, hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, metrics APIs, job tracking, async queue (three modes), health endpoint, 131 tests.
+**Done and tested:** upload, processing, chunking, embeddings, hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, metrics APIs, job tracking, async queue (three modes), health endpoint, 133 tests.
 
 **Not done / limitations (honest list):**
 - **Real LLM provider (OpenAI / Claude): not implemented.** `AI_MODE=real` returns a clear configuration error. Waiting for a company API key.

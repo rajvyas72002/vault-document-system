@@ -143,6 +143,20 @@ def _numbers(text: str) -> set:
     return set(re.findall(r"\d+(?:[.,]\d+)*", text))
 
 
+def _locate_quote(text: str, index: int, chunks: Sequence[RetrievedChunk]) -> Optional[int]:
+    """Position of the retrieved chunk that really contains the quote, or None.
+    The passage the model named is tried first. Small models often get the number wrong while
+    quoting the right sentence, so the other retrieved passages are searched too. The quote still
+    has to exist word for word in text that was retrieved; an invented quote is never accepted."""
+    needle = _norm(text)
+    named = index - 1 if 1 <= index <= len(chunks) else None
+    order = ([named] if named is not None else []) + [i for i in range(len(chunks)) if i != named]
+    for i in order:
+        if needle in _norm(chunks[i].text):
+            return i
+    return None
+
+
 def parse_and_verify(raw: str, chunks: Sequence[RetrievedChunk], model: str) -> Optional[ProviderAnswer]:
     """Trust nothing the model says. Keep the answer only if its quotes really exist in the
     retrieved passages and every number in the answer appears in those quotes."""
@@ -160,15 +174,19 @@ def parse_and_verify(raw: str, chunks: Sequence[RetrievedChunk], model: str) -> 
     seen = set()
     for quote in data.get("quotes") or []:
         try:
-            index = int(quote.get("passage"))
             text = str(quote.get("text") or "").strip()
-        except (AttributeError, TypeError, ValueError):
+        except AttributeError:
             continue
-        if not 1 <= index <= len(chunks) or len(text) < 6 or not re.search(r"\w", text):
+        try:
+            index = int(quote.get("passage"))
+        except (TypeError, ValueError):
+            index = 0  # unreadable passage number: the quote is still searched for below
+        if len(text) < 6 or not re.search(r"\w", text):
             continue
-        if _norm(text) in _norm(chunks[index - 1].text) and (index, _norm(text)) not in seen:
-            seen.add((index, _norm(text)))
-            verified.append(Evidence(chunks[index - 1], text))
+        found = _locate_quote(text, index, chunks)
+        if found is not None and (found, _norm(text)) not in seen:
+            seen.add((found, _norm(text)))
+            verified.append(Evidence(chunks[found], text))
     if not verified:
         return None
     if not _numbers(answer) <= _numbers(" ".join(e.sentence for e in verified)):

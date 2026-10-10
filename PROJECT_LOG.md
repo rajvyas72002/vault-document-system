@@ -20,7 +20,8 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 - Built: async queue with `inline`, `background` and `celery` modes, `202` + job status, redelivery-safe worker, queue-down `503`.
 - Wrote README, AI_USAGE, DEMO, requirements checklist.
 - Verified background mode by hand (202, then job succeeded). Docker Desktop could not start (WSL not installed), so used Memurai as the Redis server: Celery worker received and completed a job end to end.
-- Test count: 131 passed, 1 xfailed (documented limitation).
+- Test count: 133 passed, 1 xfailed (documented limitation).
+- Fixed a false refusal found while recording the demo: the model quoted the right sentence but named the wrong passage number, so verification rejected a correct answer. Verification now accepts a quote that appears word for word in ANY retrieved passage and cites that passage. Invented quotes are still rejected. Found with `python -m app.debug_ask`.
 
 ## Still open
 - Real LLM provider (`AI_MODE=real`): waiting for company API key and provider name.

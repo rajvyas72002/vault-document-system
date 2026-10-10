@@ -82,8 +82,8 @@ def test_quote_matching_ignores_case_and_whitespace():
         reply(supported=True, answer="It is 60 days.", quotes=[{"passage": 1, "text": "waiting period of 60 days"}]),  # invented quote
         reply(supported=True, answer="It is 45 days.", quotes=[{"passage": 1, "text": "Initial waiting period: 30 days"}]),  # number not in quote
         reply(supported=True, answer="Yes.", quotes=[]),                                                  # no evidence at all
-        reply(supported=True, answer="30 days", quotes=[{"passage": 9, "text": "Initial waiting period: 30 days"}]),  # bad passage number
-        reply(supported=True, answer="30 days", quotes=[{"passage": 2, "text": "Initial waiting period: 30 days"}]),   # quote from wrong passage
+        reply(supported=True, answer="30 days", quotes=[{"passage": 9, "text": "waiting period of 99 days"}]),          # bad passage number and invented quote
+        reply(supported=True, answer="30 days", quotes=[{"passage": 2, "text": "Waiting period of 30 days applies"}]),  # invented quote, wrong passage
         "this is not json",
         "[1, 2, 3]",
         "",
@@ -91,6 +91,23 @@ def test_quote_matching_ignores_case_and_whitespace():
 )
 def test_unverifiable_answers_are_rejected(raw):
     assert parse_and_verify(raw, PASSAGES, "m") is None
+
+
+def test_right_quote_with_wrong_passage_number_is_accepted_and_cited_correctly():
+    """Small models often name the wrong passage number while quoting the right sentence."""
+    for passage in (2, 9, "x"):
+        raw = reply(supported=True, answer="The waiting period is 30 days.",
+                    quotes=[{"passage": passage, "text": "Initial waiting period: 30 days"}])
+        result = parse_and_verify(raw, PASSAGES, "m")
+        assert result is not None
+        assert result.evidence[0].chunk is PASSAGES[0]   # cited from the passage that really contains it
+
+
+def test_same_quote_named_twice_is_cited_once():
+    raw = reply(supported=True, answer="30 days",
+                quotes=[{"passage": 1, "text": "Initial waiting period: 30 days"},
+                        {"passage": 2, "text": "Initial waiting period: 30 days"}])
+    assert len(parse_and_verify(raw, PASSAGES, "m").evidence) == 1
 
 
 def test_prompt_treats_documents_as_untrusted_data():
