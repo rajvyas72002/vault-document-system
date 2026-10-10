@@ -8,3 +8,4 @@ psycopg[binary]
 python-multipart
 pymupdf
 python-docx
+celery[redis]

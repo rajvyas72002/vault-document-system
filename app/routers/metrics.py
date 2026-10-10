@@ -8,12 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.jobs import STUCK_AFTER_MINUTES
 from app.models import ChatMessage, ChatSession, Document, DocumentChunk, DocumentInsight, ProcessingJob
 from app.schemas import DocumentMetrics, JobOut, ProcessingMetrics, SystemMetrics
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
-STUCK_AFTER_MINUTES = 15
 
 
 def percentile(values: List[int], pct: float) -> Optional[int]:

@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     chunk_size: int = 800      # characters per chunk
     chunk_overlap: int = 150   # characters shared between neighbouring chunks
+    # --- background processing ---
+    # inline: process inside the request (simple, blocks) | background: FastAPI background task (no Redis)
+    # | celery: real queue (Redis + a worker process)
+    task_backend: Literal["inline", "background", "celery"] = "inline"
+    redis_url: str = "redis://localhost:6379/0"
+    auto_insights: bool = False   # queued processing also generates insights once a document completes
     # --- Ollama (local models) ---
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.1:latest"

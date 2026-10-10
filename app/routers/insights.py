@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_insight_generator
+from app.insight_service import store_insights
 from app.insights import InsightGenerator, InsightOptions
-from app.models import Document, DocumentChunk, DocumentInsight
+from app.models import Document, DocumentInsight
 from app.schemas import InsightOut, InsightRequest
 
 router = APIRouter(prefix="/documents", tags=["insights"])
@@ -28,22 +29,7 @@ def generate_insights(
     if doc.status != "completed":
         raise HTTPException(409, "Document is not processed yet. Call POST /documents/{id}/process first.")
     options = body or InsightRequest()
-    passages = db.scalars(
-        select(DocumentChunk.text).where(DocumentChunk.document_id == doc.id).order_by(DocumentChunk.chunk_index)
-    ).all()
-
-    data = generator.generate(doc.original_filename, passages, InsightOptions(options.length, options.focus, options.tone))
-
-    insight = db.scalar(select(DocumentInsight).where(DocumentInsight.document_id == doc.id))
-    if insight is None:
-        insight = DocumentInsight(document_id=doc.id)
-        db.add(insight)
-    insight.summary, insight.key_points = data.summary, data.key_points
-    insight.category, insight.tags = data.category, data.tags
-    insight.options, insight.generated_by, insight.note = options.model_dump(), data.generated_by, data.note
-    db.commit()
-    db.refresh(insight)
-    return insight
+    return store_insights(db, doc, generator, InsightOptions(options.length, options.focus, options.tone))
 
 
 @router.get("/{document_id}/insights", response_model=InsightOut)

@@ -1,20 +1,26 @@
+import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.deps import get_embedder
+from app.deps import get_dispatcher, get_embedder
 from app.embeddings import Embedder
-from app.models import Document, DocumentChunk
+from app.jobs import find_active_job
+from app.models import Document, DocumentChunk, ProcessingJob
 from app.processing import process_document
-from app.schemas import ChunkList, DocumentList, DocumentOut, DocumentStatus
+from app.schemas import ChunkList, DocumentList, DocumentOut, DocumentStatus, JobAccepted, JobOut
+from app.tasks import Dispatcher
 from app.storage import save_upload
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
@@ -88,21 +94,61 @@ def get_document_status(document_id: uuid.UUID, db: Session = Depends(get_db)):
     return _get_or_404(db, document_id)
 
 
-@router.post("/{document_id}/process", response_model=DocumentOut)
+@router.post(
+    "/{document_id}/process",
+    response_model=DocumentOut,
+    responses={
+        202: {"model": JobAccepted, "description": "Queued (TASK_BACKEND=background or celery). Poll GET /jobs/{job_id}."},
+        409: {"description": "A job for this document is already queued or running."},
+        503: {"description": "The task queue is unreachable."},
+    },
+)
 def process(
     document_id: uuid.UUID,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     embedder: Optional[Embedder] = Depends(get_embedder),
+    dispatcher: Optional[Dispatcher] = Depends(get_dispatcher),
 ):
     """Extract text, build chunks and (in Ollama mode) embed them. Also works as a retry for failed documents.
 
-    Runs inline for now; a Celery worker will call the same function later.
+    TASK_BACKEND=inline: runs now and returns the document (200).
+    TASK_BACKEND=background|celery: creates a job, returns 202 immediately, a worker does the rest.
     """
     doc = _get_or_404(db, document_id)
-    if doc.status == "processing":
-        raise HTTPException(409, "Document is already being processed.")
-    return process_document(db, doc.id, settings, embedder)
+    if dispatcher is None:
+        if doc.status == "processing":
+            raise HTTPException(409, "Document is already being processed.")
+        return process_document(db, doc.id, settings, embedder)
+
+    active = find_active_job(db, doc.id)
+    if active is not None:
+        raise HTTPException(409, f"Document already has a job in progress (job {active.id}).")
+    job = ProcessingJob(document_id=doc.id, kind="process", status="queued")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    try:
+        dispatcher.enqueue(job.id)
+    except Exception as exc:
+        log.warning("Could not queue job %s: %s", job.id, exc)
+        job.status, job.finished_at = "failed", datetime.now(timezone.utc)
+        job.error_message = "Task queue unavailable"
+        db.commit()
+        raise HTTPException(503, "The task queue is not reachable. Start Redis and the worker, or set TASK_BACKEND=background.")
+    return JSONResponse(
+        status_code=202,
+        content=JobAccepted(job_id=job.id, document_id=doc.id, status="queued", status_url=f"/jobs/{job.id}").model_dump(mode="json"),
+    )
+
+
+@router.get("/{document_id}/jobs", response_model=list[JobOut])
+def list_document_jobs(document_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Processing history of one document, newest first."""
+    _get_or_404(db, document_id)
+    return db.scalars(
+        select(ProcessingJob).where(ProcessingJob.document_id == document_id).order_by(ProcessingJob.created_at.desc()).limit(20)
+    ).all()
 
 
 @router.get("/{document_id}/chunks", response_model=ChunkList)

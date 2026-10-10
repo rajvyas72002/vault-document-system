@@ -2,7 +2,7 @@
 Tests override these to inject fakes, so no real Ollama is ever called in tests."""
 from typing import Optional
 
-from fastapi import Depends
+from fastapi import BackgroundTasks, Depends
 
 from app.config import Settings, get_settings
 from app.conversation import OllamaRewriter
@@ -41,3 +41,20 @@ def get_rewriter(settings: Settings = Depends(get_settings)) -> Optional[OllamaR
 
 def get_insight_generator(settings: Settings = Depends(get_settings)) -> InsightGenerator:
     return get_insight_generator_for(settings)
+
+
+def get_session_factory():
+    """Background jobs need their own database session (the request's session is closed by then)."""
+    from app.db import SessionLocal
+    return SessionLocal
+
+
+def get_dispatcher(background: BackgroundTasks, settings: Settings = Depends(get_settings),
+                   session_factory=Depends(get_session_factory)):
+    """None means 'process inline'. Imported lazily to avoid a circular import with app.tasks."""
+    from app.tasks import BackgroundDispatcher, CeleryDispatcher
+    if settings.task_backend == "background":
+        return BackgroundDispatcher(background, session_factory, settings)
+    if settings.task_backend == "celery":
+        return CeleryDispatcher()
+    return None

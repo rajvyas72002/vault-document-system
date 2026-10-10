@@ -179,8 +179,11 @@ class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     document_id: uuid.UUID
+    kind: str = "process"
     status: str
     created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
     chunk_count: Optional[int] = None
     error_message: Optional[str] = None
@@ -209,3 +212,10 @@ class SystemMetrics(BaseModel):
     avg_answer_latency_ms: Optional[float] = None
     p95_answer_latency_ms: Optional[int] = None
     answers_by_generator: dict
+
+
+class JobAccepted(BaseModel):
+    job_id: uuid.UUID
+    document_id: uuid.UUID
+    status: str
+    status_url: str

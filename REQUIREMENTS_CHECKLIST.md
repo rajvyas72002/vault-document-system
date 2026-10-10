@@ -1,14 +1,14 @@
 # Requirements checklist (traced to the case study PDF)
 
 Status: DONE = built and tested | PARTIAL = works but incomplete | MOCK = fake/placeholder | TODO = not started
-Last updated: 2026-10-10 (insights + metrics done; 119 tests passing)
+Last updated: 2026-10-10 (docs written; 131 tests passing)
 
 ## Backend components
 | PDF requirement | Status | Notes |
 |---|---|---|
 | Intelligent upload handler | DONE | extension allowlist, magic bytes, size limit, SHA-256 dedup, safe filenames |
 | Smart document analysis (AI summary/insights) | DONE | summary, key points, category, tags; LLM output verified (verbatim key points, no invented numbers), extractive fallback. Not yet auto-run after processing |
-| Asynchronous processing pipeline | PARTIAL | status state machine + retry-safe processing exist, but it runs inside the request. Celery + Redis TODO |
+| Asynchronous processing pipeline | PARTIAL | job queue built (inline / background / celery), 202 + GET /jobs/{id}, retries safe, queue-down => 503. Tested with fakes only. NOT yet run against a real Redis + worker |
 | Upload & ingestion API | DONE | POST /documents/upload |
 | Document retrieval API | DONE | list, detail, status, chunks |
 | AI insights API | DONE | POST + GET /documents/{id}/insights |
@@ -44,10 +44,10 @@ Last updated: 2026-10-10 (insights + metrics done; 119 tests passing)
 |---|---|
 | Working backend | PARTIAL |
 | Git repository | DONE (local; GitHub push TODO) |
-| README.md with architecture + assumptions | TODO |
-| AI_USAGE.md | TODO |
+| README.md with architecture + assumptions | DONE | architecture diagrams, setup, API, assumptions, honest limitations |
+| AI_USAGE.md | DONE | has ONE placeholder line for other AI tools Raj used: fill in or delete |
 | Tests (pytest) | DONE: 69 passed, 1 xfailed (known synonym limitation in mock mode) |
-| Demo of document chat | TODO |
+| Demo of document chat | PARTIAL | DEMO.md script written; live rehearsal still to do |
 
 ## Optional / bonus
 | Item | Status |
@@ -57,7 +57,7 @@ Last updated: 2026-10-10 (insights + metrics done; 119 tests passing)
 | Follow-up question suggestions | TODO |
 | Summary customisation | DONE (length, focus, tone) |
 | Auto categorisation / tagging | DONE |
-| Streamlit frontend | TODO (planned) |
+| Frontend (Next.js, optional) | TODO (only if time remains) |
 | Streaming responses | TODO |
 | Health endpoint | DONE (/health) |
 | Cost / token tracking | TODO |
