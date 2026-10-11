@@ -5,9 +5,10 @@ About 8 minutes. Wording of LLM answers can vary slightly from run to run; the f
 
 ## Before the demo (checklist)
 - [ ] PostgreSQL running; `python -m app.init_db` done
-- [ ] Ollama running with `llama3.1` and `nomic-embed-text`; `python -m app.check_ollama` shows all PASS
-- [ ] `.env`: `AI_MODE=ollama`, `TASK_BACKEND=background` (or `celery` with Redis + worker running)
-- [ ] The 5 sample PDFs from `data/policies/` uploaded and processed (`python -m app.reprocess_all` if needed)
+- [ ] Hosted: `.env` has `AI_MODE=real`, `CHAT_PROVIDER=openai`, `EMBED_PROVIDER=openai`, `OPENAI_CHAT_MODEL=gpt-4o`; `python -m app.check_openai` passes. (Local option: Ollama running with `llama3.1` and `nomic-embed-text`, `python -m app.check_ollama` all PASS, providers set to `ollama`)
+- [ ] `TASK_BACKEND=background` (or `celery` with Redis + worker running)
+- [ ] The sample PDFs from `data/policies/` uploaded and processed (`python -m app.reprocess_all` if needed)
+- [ ] Optional to show: `python -m app.evaluate` score (60/60 with gpt-4o), thumbs up / down in Chat and Insights, satisfaction card in Metrics
 - [ ] `pytest` is green
 - [ ] `uvicorn app.main:app` running; browser open at `http://127.0.0.1:8000/docs`
 

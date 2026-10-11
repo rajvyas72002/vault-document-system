@@ -1,7 +1,7 @@
 # Requirements checklist (traced to the case study PDF)
 
 Status: DONE = built and tested | PARTIAL = works but incomplete | MOCK = fake/placeholder | TODO = not started
-Last updated: 2026-10-10 (133 tests passing; Celery and frontend verified by hand)
+Last updated: 2026-10-11 (191 tests in my container, to be confirmed locally; Celery and frontend verified by hand)
 
 ## Backend components
 | PDF requirement | Status | Notes |
@@ -36,8 +36,8 @@ Last updated: 2026-10-10 (133 tests passing; Celery and frontend verified by han
 | Citations | DONE | document, page, exact quote, verified against source |
 | Anti-hallucination | DONE | coverage gate, quote + number verification, "not specified" answers |
 | Local LLM (Ollama) | DONE | llama3.1 verified on 3 questions; not a benchmark |
-| Real provider (OpenAI/Claude) | TODO | waiting for company API key; AI_MODE=real not implemented |
-| LangChain / LlamaIndex | NOT USED | optional "highly recommended"; hand-built instead. Be ready to justify |
+| Real provider (OpenAI) | DONE | AI_MODE=real, CHAT_PROVIDER/EMBED_PROVIDER=openai via LangChain; evaluation gpt-4o 60/60 (small set, CBSE part partly tuned) |
+| LangChain / LlamaIndex | DONE | ChatOpenAI, OpenAIEmbeddings, BaseRetriever, LCEL chain. Retrieval algorithm and verifier are our own code (I first built them by hand out of curiosity and compared: same 60/60) |
 
 ## Deliverables
 | Item | Status |
@@ -46,7 +46,7 @@ Last updated: 2026-10-10 (133 tests passing; Celery and frontend verified by han
 | Git repository | DONE (local; GitHub push TODO) |
 | README.md with architecture + assumptions | DONE | architecture diagrams, setup, API, assumptions, honest limitations |
 | AI_USAGE.md | DONE | has ONE placeholder line for other AI tools Raj used: fill in or delete |
-| Tests (pytest) | DONE: 133 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
+| Tests (pytest) | DONE: 191 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
 | Demo of document chat | PARTIAL | DEMO.md script written; live rehearsal still to do |
 
 ## Optional / bonus

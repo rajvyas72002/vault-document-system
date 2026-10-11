@@ -3,11 +3,11 @@
 "ChatGPT for your documents": upload PDF or DOCX files, get AI insights, and chat with them in plain language.
 Every answer comes with citations (document, page, exact quote), and every quote is **checked against the source text** before it is shown.
 
-Built for the Outmarket.ai case study. FastAPI + PostgreSQL + Celery/Redis, with a local LLM (Ollama).
+Built for the Outmarket.ai case study. FastAPI + PostgreSQL + Celery/Redis + Next.js, with LangChain wiring a hosted model (OpenAI) or local models (Ollama).
 
-> **Honest status:** everything below works and is tested **except** the real company LLM provider (`AI_MODE=real`),
-> which is not implemented yet because no API key has been provided. The system currently runs on local Ollama models.
-> See [What is and is not done](#what-is-and-is-not-done).
+> **Status:** everything below works and is tested. The hosted-model path (OpenAI through LangChain) was run end to end with a
+> company key and measured with a 60-question evaluation ([Evaluation](#evaluation)); the unit tests use fakes and never call a model.
+> Local Ollama models remain a supported option. See [What is and is not done](#what-is-and-is-not-done).
 
 ---
 
@@ -16,28 +16,23 @@ Built for the Outmarket.ai case study. FastAPI + PostgreSQL + Celery/Redis, with
 | Area | Features |
 |---|---|
 | Upload | PDF and DOCX only. Extension allow-list, magic-byte check, size limit, safe generated filenames, SHA-256 duplicate detection |
-| Processing | Text extraction, page-aware chunking with overlap, embeddings, retry-safe state machine (`pending → processing → completed / failed`) |
+| Processing | Column-aware text extraction, page-aware chunking with overlap, embeddings, retry-safe state machine (`pending → processing → completed / failed`) |
 | Async | Job queue with three modes: `inline`, `background` (no Redis), `celery` (Redis + worker). `202 Accepted` + `GET /jobs/{id}` |
 | Chat | Chat sessions, multi-turn history, follow-up questions ("What about the vehicle policy?"), multi-document questions and comparisons |
 | Answers | Hybrid retrieval (BM25 + vectors), citations with page numbers, verified quotes, honest "not specified" refusals |
 | Insights | Summary, key points, category, tags. Customisable length, focus and tone |
-| Metrics | Document statistics, processing metrics (success rate, p95 duration, failure reasons, stuck documents), answer metrics (refusals, latency) |
+| Feedback | Thumbs up / down on every answer and on every document summary, with an optional comment on a thumbs down |
+| Metrics | Document statistics, processing metrics (success rate, p95 duration, failure reasons, stuck documents), answer metrics (refusals, latency), user satisfaction |
+| Evaluation | `python -m app.evaluate`: 60 questions with expected facts, source and refusals, scored automatically |
 
 ---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    C[Client / Swagger UI] -->|HTTP| API[FastAPI app]
-    API --> PG[(PostgreSQL)]
-    API -->|job id only| R[(Redis)]
-    R --> W[Celery worker]
-    W --> PG
-    W --> O[Ollama: embeddings + LLM]
-    API --> O
-    API --> FS[(Local file storage)]
-```
+![Architecture: Next.js, FastAPI, Redis and Celery, PostgreSQL, the LangChain answer pipeline, OpenAI and Ollama](docs/architecture.png)
+
+LangChain provides the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the retriever interface (`BaseRetriever`) and the chain that runs the answer steps.
+The retrieval algorithm and the answer verification are our own code, because they are what the evaluation measures. Source of the diagram: `docs/architecture.svg`.
 
 **Ingestion**
 
@@ -49,7 +44,7 @@ flowchart LR
     H -- no --> S[Save file + documents row: pending]
     S --> P[POST /process creates a job]
     P --> Q[Queue: inline / background / celery]
-    Q --> X[Extract text per page]
+    Q --> X[Extract text per page, column-aware]
     X --> K[Chunk with overlap]
     K --> E[Embed chunks]
     E --> DB[(chunks + vectors + job record)]
@@ -62,13 +57,13 @@ flowchart LR
     Q[Question] --> F{Follow-up?}
     F -- yes --> RW[LLM rewrites it as a standalone question]
     F -- no --> R1
-    RW --> R1[Hybrid retrieval]
+    RW --> R1[VaultRetriever: hybrid retrieval]
     R1 --> L[BM25 keyword search]
     R1 --> VS[Vector search]
     L --> RRF[Reciprocal Rank Fusion]
     VS --> RRF
     RRF --> G[LLM answers from numbered passages, JSON only]
-    G --> CHK{Quotes exist word-for-word? Numbers in the quotes?}
+    G --> CHK{Quotes exist in the source? Numbers traceable?}
     CHK -- yes --> A[Answer + citations]
     CHK -- no --> N[The uploaded documents do not specify an answer]
 ```
@@ -83,6 +78,8 @@ flowchart LR
 | `document_insights` | Summary, key points, category, tags, options used, which generator produced them |
 | `chat_sessions` | A conversation, optionally limited to some documents |
 | `chat_messages` | Each turn with citations, `answered` flag, generator and latency |
+| `message_feedback` | One thumbs up / down (and optional comment) per assistant answer |
+| `insight_feedback` | One thumbs up / down per document summary; cleared when the summary is regenerated |
 
 ---
 
@@ -98,22 +95,24 @@ Interactive docs: `http://127.0.0.1:8000/docs`
 | `GET /documents/{id}/chunks`, `GET /documents/{id}/jobs` | Inspect chunks and processing history |
 | `GET /jobs/{job_id}` | Job status: `queued → running → succeeded / failed` |
 | `POST /documents/{id}/insights`, `GET /documents/{id}/insights` | Generate / read summary, key points, category, tags |
+| `PUT` / `DELETE /documents/{id}/insights/feedback` | Thumbs up / down on the summary, or take it back |
 | `POST /search` | Retrieval only. Shows exactly which passages an answer would use |
 | `POST /ask` | One-off question with citations |
 | `POST /chats`, `GET /chats` | Start / list chat sessions |
 | `POST /chats/{id}/messages` | Ask inside a conversation (multi-turn) |
-| `GET /chats/{id}/history` | Full history with citations |
-| `GET /metrics/documents`, `/metrics/processing`, `/metrics/system` | Monitoring data |
+| `PUT` / `DELETE /chats/{id}/messages/{message_id}/feedback` | Thumbs up / down on an answer, or take it back |
+| `GET /chats/{id}/history` | Full history with citations and ratings |
+| `GET /metrics/documents`, `/metrics/processing`, `/metrics/system`, `/metrics/feedback` | Monitoring data, including satisfaction rate and the latest thumbs down |
 | `GET /health` | Liveness and current `ai_mode` |
 
 Error behaviour: `404` unknown id, `409` not processed yet / job already running, `413` too large, `415` wrong type,
-`422` bad input, `503` Ollama or the task queue is unreachable (with a message that says what to start).
+`422` bad input, `503` the AI service or the task queue is unreachable (with a message that says what to start).
 
 ---
 
 ## Setup (Windows, PowerShell)
 
-Requirements: Python 3.10+, PostgreSQL 17, [Ollama](https://ollama.com). Redis only if you want the Celery queue.
+Requirements: Python 3.10+, PostgreSQL 17. Redis only for the Celery queue. [Ollama](https://ollama.com) only for local models. An OpenAI key only for the hosted option.
 
 ```powershell
 # 1. Environment
@@ -126,31 +125,43 @@ pip install -r requirements.txt
 #    CREATE DATABASE vault OWNER vault;
 
 # 3. Configuration
-copy .env.example .env        # then edit DATABASE_URL (real password) and AI_MODE
+copy .env.example .env        # then edit DATABASE_URL (real password) and the AI settings below
 python -m app.init_db         # creates tables
 
-# 4. Local models (for AI_MODE=ollama)
-ollama pull llama3.1
-ollama pull nomic-embed-text
-python -m app.check_ollama    # PASS/FAIL smoke test of Ollama, embeddings and chat
-
-# 5. Run
+# 4. Run
 uvicorn app.main:app
 ```
 
 Then open `http://127.0.0.1:8000/docs`. Fictional sample documents are in `data/policies/`.
 
-If you switch `AI_MODE` from `mock` to `ollama` after uploading documents, run `python -m app.reprocess_all` once so existing documents get embeddings.
+Run the backend commands from the project root (the folder that contains `app/`), not from `frontend/`.
 
-### Configuration (`.env`)
+### Choosing the AI (`.env`)
+
+| Goal | Settings | Extra step |
+|---|---|---|
+| No AI, offline, for tests | `AI_MODE=mock` | none |
+| **Hosted (best measured quality)** | `AI_MODE=real`, `CHAT_PROVIDER=openai`, `EMBED_PROVIDER=openai`, `OPENAI_API_KEY=...`, `OPENAI_CHAT_MODEL=gpt-4o` | `python -m app.check_openai`, then `python -m app.reprocess_all` |
+| Fully local | `AI_MODE=real`, `CHAT_PROVIDER=ollama`, `EMBED_PROVIDER=ollama` | `ollama pull llama3.1` and `ollama pull nomic-embed-text`, `python -m app.check_ollama`, `python -m app.reprocess_all` |
+
+The API key goes in `.env` only (git-ignored). `check_openai` prints only the last four characters of the key. After changing `EMBED_PROVIDER`, run `reprocess_all` once: vectors from different models cannot be compared, so each chunk stores the name of the model that made it.
+
+### Configuration reference
 
 | Variable | Values | Meaning |
 |---|---|---|
-| `AI_MODE` | `mock` / `ollama` / `real` | `mock`: keyword search, no AI. `ollama`: local models. `real`: company API (**not implemented yet**) |
+| `AI_MODE` | `mock` / `real` (`ollama` is the older name for `real`) | `mock`: keyword search, no AI. `real`: embeddings + LLM from the providers below |
+| `CHAT_PROVIDER` | `ollama` / `openai` | Which model writes the answers |
+| `EMBED_PROVIDER` | `ollama` / `openai` | Which model makes the vectors. Re-run `reprocess_all` after changing |
+| `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_EMBED_MODEL` | | Defaults `gpt-4o-mini` and `text-embedding-3-small`; `gpt-4o` scored best |
+| `OPENAI_BASE_URL`, `OPENAI_TEMPERATURE` | optional | Company gateway; temperature (default `0`, blank = do not send) |
+| `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL` | model names | Defaults `llama3.1:latest`, `nomic-embed-text` |
+| `VECTOR_MIN_SIMILARITY` | number | Cosine cut-off, default `0.5`. Measured: `0.3` was worse than `0.5` with OpenAI embeddings |
+| `PIPELINE` | `langchain` (default) / `own` | The answer flow as a LangChain chain, or as a plain function. Same results |
+| `CHUNKER` | `own` (default) / `langchain` | Sliding window, or LangChain's sentence-aware splitter. See Evaluation |
 | `TASK_BACKEND` | `inline` / `background` / `celery` | How `/process` runs. See below |
 | `AUTO_INSIGHTS` | `true` / `false` | Queued processing also generates insights |
 | `REDIS_URL` | URL | Only for `celery` |
-| `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL` | model names | Defaults `llama3.1:latest`, `nomic-embed-text` |
 | `MAX_UPLOAD_MB` | number | Upload size limit |
 
 `.env` is git-ignored. Never commit it.
@@ -165,12 +176,13 @@ uvicorn app.main:app
 ```
 
 Only job ids travel through Redis. Status, timings and errors live in PostgreSQL, so losing the queue never loses history.
+Restart the worker after changing `.env` or code: it keeps the settings it started with.
 
 ---
 
 ### Frontend (Next.js)
 
-A small Next.js app in `frontend/` (plain JavaScript, no UI library) talks to the API. Pages: **Documents** (upload, process, retry, job polling), **Chat** (multi-turn, verified citations, refusals shown clearly), **Insights** (summary, key points, category, tags with length/tone/focus), **Metrics** (document, processing and answer metrics).
+A small Next.js app in `frontend/` (plain JavaScript, no UI library) talks to the API. Pages: **Documents** (upload, process, retry, job polling), **Chat** (multi-turn, verified citations, refusals shown clearly, thumbs up / down), **Insights** (summary, key points, category, tags with length/tone/focus, thumbs up / down), **Metrics** (document, processing, answer and feedback metrics).
 
 ```powershell
 cd frontend
@@ -179,7 +191,7 @@ copy .env.example .env.local     # optional, defaults to http://127.0.0.1:8000
 npm run dev                      # http://localhost:3000
 ```
 
-The backend must be running; its `CORS_ORIGINS` setting (default `http://localhost:3000`) lets the browser call it. The frontend has no automated tests; it was checked by building it and clicking through every page.
+The backend must be running; its `CORS_ORIGINS` setting (default `http://localhost:3000`) lets the browser call it. The frontend has no automated tests; it was checked by building it and clicking through the pages.
 
 ## Testing
 
@@ -187,40 +199,70 @@ The backend must be running; its `CORS_ORIGINS` setting (default `http://localho
 pytest
 ```
 
-At the last full run: **133 passed, 1 expected failure (xfail)**.
+At the last full run: **191 passed, 1 expected failure (xfail)**.
 
-- No test calls a real model or the network. Ollama is replaced by scripted fakes (`httpx.MockTransport`), so the suite is fast and deterministic.
+- No test calls a real model or the network. Models are replaced by scripted fakes, so the suite is fast and deterministic.
 - The `.env` file can never leak into tests: the test client forces `ai_mode="mock"`.
 - Several safety guards were checked by deliberately breaking them and confirming a test fails.
 - The one `xfail` documents a known limitation: **keyword-only search cannot match synonyms** ("cosmetic surgery" vs "cosmetic procedures"). Hybrid mode with embeddings solves it; this is shown by a separate passing test.
-- What the tests do **not** prove: how a real LLM behaves. Real-model behaviour was checked by hand through Swagger (see `DEMO.md`).
-- The Celery worker is unit-tested with fakes (no Redis needed). The live path was verified **by hand** on Windows with Memurai (a Redis-compatible server): `POST /process` returned 202, the worker received and finished the task, and `GET /jobs/{id}` showed `succeeded`. It is not part of the automated suite.
+- What the tests do **not** prove: how a real LLM behaves. That is what the evaluation below is for.
+- The Celery worker is unit-tested with fakes (no Redis needed). The live path was verified **by hand** on Windows with Memurai (a Redis-compatible server). It is not part of the automated suite.
+
+## Evaluation
+
+```powershell
+python -m app.evaluate                          # all 60 questions with the model in .env
+python -m app.evaluate --set policies           # or: cbse
+python -m app.evaluate --only 8,117 --model gpt-4o
+```
+
+The set has two parts: **CBSE** (20 questions on a physics textbook chapter, including a misspelt question and 5 that must be refused) and **Policies** (40 questions over the six policy documents, including a misspelt question, cross-document comparisons, a reasoning question and 5 that must be refused).
+Each question lists the facts the answer must contain and the page it must come from; the script also checks that retrieval found that page. A full run makes roughly 100 to 150 API calls.
+
+| Setup (OpenAI embeddings, similarity 0.5) | Total | CBSE | Policies | Retrieval found the source |
+|---|---|---|---|---|
+| gpt-4o, LangChain pipeline (the default) | **60/60** | 20/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o, plain-function pipeline | 60/60 | 20/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o, LangChain sentence splitter | 59/60 | 19/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o-mini | 58 to 59/60 | 18 to 19/20 | 39 to 40/40 | 15/15 and 35/35 |
+
+What these numbers mean, and do not mean:
+- It is a small set written by me, not a benchmark. The CBSE questions were used while fixing problems, so that part is partly tuned; the policy questions were not tuned against and are the fairer signal.
+- The LangChain pipeline gives the same results as the plain function: the move to LangChain changed the wiring, not the answers.
+- The LangChain sentence splitter scored one point lower: with the new chunk boundaries the passage for "which two extra SI units?" fell out of the top results and the model answered "joule and newton". The verifier accepted it because the quotes exist in the document. The splitter stays available (`CHUNKER=langchain`) but is off by default.
+- gpt-4o-mini sometimes drops an item from a list (it named two of three formulas in one question). gpt-4o did not.
+- The local model (`llama3.1`) scored 8/20 on the CBSE part in the first run, before the verification fixes described below. It has not been re-measured with the current code.
 
 ---
 
 ## Design decisions and assumptions
 
-**Hand-built RAG instead of LangChain / LlamaIndex.** This was my first RAG project. My goal was not only to finish on time but to understand how
-RAG works internally: extraction, chunking, embeddings, hybrid retrieval and answer generation. I built each part with plain Python libraries and custom logic, working with an AI assistant (see `AI_USAGE.md`) and running and checking every step myself. That gave me
-control over retrieval and citation verification, and a strong foundation for using a framework well later. The trade-off is real: a framework
-reduces development and maintenance effort and brings ready-made integrations. The code uses small interfaces (`Retriever`, `Embedder`, `LLMProvider`,
-`InsightGenerator`), so a LangChain or LlamaIndex retriever could be plugged in without changing the API.
+**LangChain for the wiring, our own code for what is measured.** The case study recommends LangChain, and the system uses it for the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the retriever interface (`BaseRetriever` returning `Document` objects) and the chain that runs retrieve, answer and verify.
+This was my first RAG project, and out of curiosity about how it works inside, I first wrote extraction, chunking, BM25 and vector search, rank fusion and the answer checks myself. Once that worked I moved the system onto LangChain and ran the same 60 questions both ways to compare them: the plain-function pipeline and the LangChain chain both score 60/60, so the framework adds a standard interface and tracing hooks without changing the answers.
+I kept the retrieval algorithm and the verifier as our own code because they are specific to this problem and are what the evaluation measures. The small interfaces (`Retriever`, `Embedder`, `LLMProvider`, `InsightGenerator`) mean a LangChain or LlamaIndex retriever can replace ours without changing the API.
 
-**Trust nothing the model says.** The LLM must return JSON with exact quotes. A quote is kept only if it appears word for word in the retrieved passage, and every number in the answer must appear in a kept quote.
-Otherwise the answer becomes "The uploaded documents do not specify an answer to this question." Document text is placed inside `<context>` tags and the prompt treats it as untrusted data (prompt-injection defence).
-Known gap: a verified quote proves the text exists, not that it answers the right question. We saw this once (a vehicle-policy follow-up answered from the health policy) and fixed the cause with question rewriting, but the check itself cannot detect it.
+**Trust nothing the model says.** The LLM must return JSON with quotes. A quote is kept only if it can be found in the retrieved passages (after ignoring spacing, bullets, dash styles and superscripts, and allowing "..." inside a quote and a quote that continues into the next chunk). The text shown to the user is the document's own wording, not the model's copy.
+Every number in the answer must be traceable: it appears in a cited passage, on the same page as a cited passage, in the question, or is the difference of two quoted figures ("faster by 1 day" from 2 and 3 days). Anything else becomes "The uploaded documents do not specify an answer to this question." Document text is placed inside `<context>` tags and the prompt treats it as untrusted data (prompt-injection defence).
+These rules are looser than my first version. Each was relaxed after the evaluation showed correct answers being refused, and each has a test that also checks the matching wrong case is still rejected.
+Known gap: a verified quote proves the text exists, not that it answers the right question. We saw this twice (a vehicle-policy follow-up answered from the health policy, and the SI-units answer above). A relevance check is the next improvement.
 
-**Hybrid retrieval.** BM25 finds exact terms (numbers, names, codes). Embeddings find meaning ("cosmetic surgery" ↔ "cosmetic procedures"). Scores are merged with Reciprocal Rank Fusion, which uses ranks only, because BM25 scores and cosine similarities are on different scales.
+**Hybrid retrieval.** BM25 finds exact terms (numbers, names, codes). Embeddings find meaning ("cosmetic surgery" ↔ "cosmetic procedures", or a misspelt question). Scores are merged with Reciprocal Rank Fusion, which uses ranks only, because BM25 scores and cosine similarities are on different scales.
+
+**Column-aware extraction.** Two-column PDF pages (the textbook) were read line by line across both columns, which mixed sentences. Extraction now orders text blocks column by column.
 
 **Embeddings carry the model name.** Vectors from different models are not comparable, so retrieval only compares vectors from the same model. Switching models is safe: re-run `reprocess_all`.
 
-**Embedding failure is not fatal.** If Ollama is down during processing, the document still becomes `completed` (keyword search works) with a visible warning. Re-running `/process` retries the embeddings.
+**Embedding failure is not fatal.** If the embedding service is down during processing, the document still becomes `completed` (keyword search works) with a visible warning. Re-running `/process` retries the embeddings.
 
-**Follow-up questions.** With a real LLM, a follow-up is rewritten into a standalone question and that is used for search and answering. If the rewrite fails or is unusable, a keyword heuristic adds the previous question. Only the last 3 turns are sent to the model.
+**Follow-up questions.** With a real LLM, a follow-up is rewritten into a standalone question and that is used for search and answering (this step uses the local Ollama model when it is running). If the rewrite fails or is unusable, a keyword heuristic adds the previous question. Only the last 3 turns are sent to the model.
+
+**Feedback.** One rating per answer or summary; changing your mind replaces it. A rating belongs to the summary it was given to, so regenerating a summary clears it. The Metrics page shows the satisfaction rate (thumbs up divided by rated answers) next to how many answers were rated at all, so a high rate from two ratings is not mistaken for a high rate from two hundred.
 
 **Processing is safe to repeat.** Old chunks are deleted before new ones are written, finished jobs are skipped when a queue re-delivers them, and a job stuck for 15 minutes no longer blocks a new one.
 
-**User-safe errors.** Messages shown to users never contain server paths or stack traces. Full detail goes to the server log.
+**Calls to the hosted model are kept deliberate.** Embeddings are computed once per chunk, never per question, and the evaluation can run a chosen subset of questions.
+
+**User-safe errors.** Messages shown to users never contain server paths, stack traces or keys. Errors from the hosted model show the error type and HTTP status only. Full detail goes to the server log.
 
 **Prompts** live in `app/providers.py` (answering), `app/conversation.py` (question rewriting) and `app/insights.py` (insights). Each has rules for grounding, refusal, untrusted input and strict output shape.
 
@@ -230,18 +272,21 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 - Vector search currently compares vectors in Python. Next step: **pgvector** with an index. Keyword search: PostgreSQL full-text search.
 - Cache query embeddings and frequent answers in Redis. Embeddings are already stored once per chunk, never recomputed per question.
 - Add per-user rate limits and quotas before exposing a paid LLM API. Track tokens and cost per request.
-- Replace the small `ALTER TABLE` step in `init_db` with Alembic migrations.
+- Replace the small `ALTER TABLE` step in `init_db` with Alembic migrations (new tables are created automatically; changes to existing tables are not).
 
 ---
 
 ## What is and is not done
 
-**Done and tested:** upload, processing, chunking, embeddings, hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, metrics APIs, job tracking, async queue (three modes), health endpoint, 133 tests.
+**Done and tested:** upload, column-aware processing, chunking, embeddings (OpenAI or local), hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, thumbs up / down feedback with metrics, metrics APIs, job tracking, async queue (three modes), health endpoint, LangChain pipeline, an evaluation script with 60 questions, 191 tests.
 
 **Not done / limitations (honest list):**
-- **Real LLM provider (OpenAI / Claude): not implemented.** `AI_MODE=real` returns a clear configuration error. Waiting for a company API key.
+- **Verification checks that a quote exists, not that it is relevant.** A wrong answer can pass if its quotes are real.
+- **The local model is weaker.** `llama3.1` is slow on a laptop (7 to 50 seconds per answer) and was not re-measured after the verification fixes. The hosted model answers in about 2 seconds.
+- **The evaluation is small and partly tuned** (see Evaluation). The hosted-model path is verified by the evaluation runs, not by automated tests.
+- **Follow-up rewriting and insights still use the local Ollama model.** Without Ollama running, follow-ups fall back to the keyword heuristic.
 - **Frontend is minimal and untested by code.** It works against the real API but has no automated tests, no auth, and no streaming.
-- **No authentication or per-user data separation.** Everything is one shared vault.
+- **No authentication or per-user data separation.** Everything is one shared vault; feedback is not tied to a user.
 - **No streaming responses**, no WebSockets.
 - **Scanned PDFs (no text layer):** rejected with a clear message. OCR is not supported.
 - **Embeddings stored as JSON**, searched in Python. Fine for a demo, not for large scale.
@@ -250,4 +295,4 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 - **Cost tracking and rate limiting** are not implemented.
 - **Celery + Redis** was verified by hand on one machine (Windows, Memurai, `--pool=solo`), not in CI. On Windows a single solo worker adds a few seconds of pickup latency; on Linux use the default pool.
 
-See `REQUIREMENTS_CHECKLIST.md` for every requirement in the case study mapped to its status, `AI_USAGE.md` for how AI tools were used, and `DEMO.md` for a demo script.
+See `REQUIREMENTS_CHECKLIST.md` for every requirement in the case study mapped to its status, `AI_USAGE.md` for how AI is used in the product and in development, `PROJECT_LOG.md` for what was built and what went wrong, and `DEMO.md` for a demo script.
