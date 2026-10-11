@@ -1,14 +1,14 @@
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.conversation import MAX_HISTORY_MESSAGES, OllamaRewriter, build_retrieval_query, is_follow_up, to_history
+from app.conversation import MAX_HISTORY_MESSAGES, LangChainRewriter, OllamaRewriter, build_retrieval_query, is_follow_up, to_history
 from app.db import get_db
 from app.deps import get_provider, get_retriever, get_rewriter
 from app.models import ChatMessage, ChatSession, MessageFeedback
@@ -82,7 +82,7 @@ def ask_in_chat(
     settings: Settings = Depends(get_settings),
     retriever: Retriever = Depends(get_retriever),
     provider: LLMProvider = Depends(get_provider),
-    rewriter: Optional[OllamaRewriter] = Depends(get_rewriter),
+    rewriter: Optional[Union[OllamaRewriter, LangChainRewriter]] = Depends(get_rewriter),
 ):
     """Ask a question inside a conversation. Earlier turns are used to understand follow-ups."""
     chat = get_chat_or_404(db, chat_id)

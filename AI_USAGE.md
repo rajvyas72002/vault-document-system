@@ -13,7 +13,7 @@ This project uses AI in two different ways, and they are described separately:
 |---|---|---|---|
 | Embeddings | `text-embedding-3-small` (OpenAI, via LangChain) or `nomic-embed-text` (Ollama) | Turns chunks and questions into vectors for semantic search | Vector stored with the model name; only same-model vectors are compared |
 | Question answering | `gpt-4o` (OpenAI, via LangChain `ChatOpenAI`) or `llama3.1` (Ollama) | Answers from numbered passages, returns JSON with exact quotes | Quotes must exist in the retrieved text; every number must be traceable (see below); otherwise "not specified" |
-| Follow-up rewriting | `llama3.1` (Ollama) | Turns "What about the vehicle policy?" into a standalone question | Only affects what is searched; never adds facts to an answer; falls back to a heuristic on bad output |
+| Follow-up rewriting | same model as the answers (`gpt-4o` with OpenAI, `llama3.1` with Ollama) | Turns "What about the vehicle policy?" into a standalone question | Only affects what is searched; never adds facts to an answer; falls back to a heuristic on bad output |
 | Insights | `llama3.1` (Ollama) | Summary, key points, category, tags (length / focus / tone options) | Key points must be verbatim sentences; summary numbers must exist in the document; category from a fixed list; extractive fallback |
 
 An offline **mock mode** (no AI, extractive) exists so the application and test suite run without a model. It is clearly labelled in every response (`generated_by`).

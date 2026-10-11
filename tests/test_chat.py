@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.conversation import MAX_HISTORY_MESSAGES, OllamaRewriter, build_retrieval_query, clean_rewrite, is_follow_up, to_history
+from app.conversation import MAX_HISTORY_MESSAGES, LangChainRewriter, OllamaRewriter, build_retrieval_query, clean_rewrite, is_follow_up, to_history
 from app.deps import get_embedder, get_provider, get_retriever, get_rewriter
 from app.errors import AIServiceError
 from app.main import app
@@ -280,3 +280,59 @@ def test_standalone_questions_are_never_rewritten(client):
     body = say(client, chat_id, VEHICLE_Q)
     assert body["searched_for"] == VEHICLE_Q
     assert not any("Latest question:" in m["content"] for call in llm.requests for m in call["messages"])
+
+
+# ----------------------------------------------------------------------------- hosted (OpenAI) rewriter
+
+class FakeHostedLLM:
+    """Stands in for a LangChain chat model: records the messages and returns a scripted reply."""
+
+    def __init__(self, reply):
+        self.reply, self.calls = reply, []
+
+    def invoke(self, messages):
+        self.calls.append(messages)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return type("Reply", (), {"content": self.reply})()
+
+
+HISTORY = [ChatTurn("user", HEALTH_Q), ChatTurn("assistant", "3 business days.")]
+
+
+def test_hosted_rewriter_returns_the_standalone_question():
+    llm = FakeHostedLLM(json.dumps({"standalone_question": VEHICLE_Q}))
+    assert LangChainRewriter(llm).rewrite("What about the vehicle policy?", HISTORY) == VEHICLE_Q
+    system, human = llm.calls[0]
+    assert "standalone question" in system.content and "JSON" in system.content    # JSON mode needs the word JSON in the prompt
+    assert HEALTH_Q in human.content and human.content.endswith("Latest question: What about the vehicle policy?")
+
+
+@pytest.mark.parametrize("reply", ["this is not json", json.dumps({"standalone_question": ""}), RuntimeError("secret sk-123 leaked")])
+def test_hosted_rewriter_falls_back_to_none_on_bad_output_or_errors(reply):
+    assert LangChainRewriter(FakeHostedLLM(reply)).rewrite("What about the vehicle policy?", HISTORY) is None
+
+
+def test_follow_up_is_rewritten_by_the_hosted_model(client):
+    app.dependency_overrides[get_embedder] = lambda: FakeEmbedder("fake-embed")
+    upload_all(client)
+    chat = FakeOllamaChat(answer_from)                       # answering model
+    provider = OllamaProvider(chat.client(), "llama3.1:latest")
+    app.dependency_overrides[get_provider] = lambda: provider
+    hosted = FakeHostedLLM(json.dumps({"standalone_question": VEHICLE_Q}))
+    app.dependency_overrides[get_rewriter] = lambda: LangChainRewriter(hosted)
+    app.dependency_overrides[get_retriever] = lambda: HybridRetriever(LexicalRetriever(), VectorRetriever(FakeEmbedder("fake-embed"), 0.5))
+    chat_id = new_chat(client)
+    say(client, chat_id, HEALTH_Q)
+    body = say(client, chat_id, "What about the vehicle policy?")
+    assert body["searched_for"] == VEHICLE_Q and "2 business days" in body["answer"]
+    assert len(hosted.calls) == 1                            # the first question has no history, so it is not rewritten
+
+
+def test_rewriter_follows_the_chat_provider():
+    from app.config import Settings
+    from app.deps import get_rewriter as factory
+    hosted = factory(Settings(ai_mode="real", chat_provider="openai", openai_api_key="test-key"))
+    local = factory(Settings(ai_mode="real", chat_provider="ollama"))
+    assert isinstance(hosted, LangChainRewriter) and isinstance(local, OllamaRewriter)
+    assert factory(Settings(ai_mode="mock")) is None

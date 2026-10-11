@@ -96,3 +96,25 @@ class OllamaRewriter:
         except ProviderError:
             return None   # the answering call will report a real outage; here we just fall back
         return clean_rewrite((data.get("message") or {}).get("content", ""))
+
+
+class LangChainRewriter:
+    """Same job as OllamaRewriter, but with a hosted chat model (any LangChain chat model that returns JSON).
+    Used when CHAT_PROVIDER=openai, so a hosted setup does not also need Ollama running.
+    Any failure returns None and the caller falls back to the keyword heuristic."""
+
+    def __init__(self, llm):
+        self.llm = llm
+
+    def rewrite(self, question: str, history: Sequence[ChatTurn]) -> Optional[str]:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        transcript = "\n".join(f"{'User' if t.role == 'user' else 'Assistant'}: {t.content}" for t in history)
+        messages = [SystemMessage(content=REWRITE_PROMPT),
+                    HumanMessage(content=f"Conversation so far:\n{transcript}\n\nLatest question: {question}")]
+        try:
+            content = self.llm.invoke(messages).content
+        except Exception:   # noqa: BLE001  (never log or raise the provider's message: it can echo part of the API key)
+            return None
+        if not isinstance(content, str):
+            content = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+        return clean_rewrite(content)

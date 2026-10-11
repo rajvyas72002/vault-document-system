@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import BackgroundTasks, Depends
 
 from app.config import Settings, get_settings
-from app.conversation import OllamaRewriter
+from app.conversation import LangChainRewriter, OllamaRewriter
 from app.insights import InsightGenerator, get_insight_generator_for
 from app.embeddings import Embedder, OllamaEmbedder, build_openai_embedder
 from app.ollama import OllamaClient
-from app.providers import LLMProvider, get_llm_provider
+from app.providers import LLMProvider, build_openai_llm, get_llm_provider
 from app.retrieval import HybridRetriever, LexicalRetriever, Retriever, VectorRetriever
 
 
@@ -42,8 +42,11 @@ def get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
     return get_llm_provider(settings)
 
 
-def get_rewriter(settings: Settings = Depends(get_settings)) -> Optional[OllamaRewriter]:
-    """Rewrites chat follow-ups into standalone questions. Only available with a real LLM."""
+def get_rewriter(settings: Settings = Depends(get_settings)):
+    """Rewrites chat follow-ups into standalone questions. Only available with a real LLM, and it uses the
+    same chat provider as the answers (OpenAI, or local Ollama)."""
+    if settings.real_ai and settings.chat_provider == "openai":
+        return LangChainRewriter(build_openai_llm(settings))
     if settings.real_ai:
         return OllamaRewriter(OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds), settings.ollama_chat_model)
     return None
