@@ -6,6 +6,8 @@
     python -m app.evaluate --only 8,110,129      # just these question numbers
     python -m app.evaluate --min-sim 0.4         # try another vector cut-off for this run only
     python -m app.evaluate --provider openai --model gpt-4o   # override the answer model for this run only
+    python -m app.evaluate --retriever langchain              # use LangChain's own hybrid retriever (see app/lc_retrieval.py)
+    python -m app.evaluate --retrieval-only --retriever own   # only check that search finds the right page: no answer-model calls
 
 It uses the SAME retrieval + provider code as the API, so the score is the real system's score.
 The pass check is keyword based (approximate): read the printed answers too.
@@ -22,12 +24,11 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.deps import get_embedder
+from app.deps import get_embedder, make_retriever
 from app.eval_questions import SETS
 from app.models import Document, DocumentChunk
 from app.providers import get_llm_provider
 from app.qa import answer_question
-from app.retrieval import HybridRetriever, LexicalRetriever, VectorRetriever
 
 
 def diagnose(s, provider, question, chunks):
@@ -48,10 +49,17 @@ def diagnose(s, provider, question, chunks):
     return f"raw LLM output: {raw[:900]!r}\n     verification: {'ACCEPTED' if ok else 'REJECTED'}"
 
 
+def first_hit_rank(chunks, sources):
+    """1-based position of the first chunk that comes from a place where the answer really is, or None."""
+    for rank, c in enumerate(chunks, start=1):
+        if any(part.lower() in c.document_name.lower() and (page is None or c.page_number == page) for part, page in sources):
+            return rank
+    return None
+
+
 def found_source(chunks, sources) -> bool:
     """Did retrieval return at least one chunk from a place where the answer really is?"""
-    return any(part.lower() in c.document_name.lower() and (page is None or c.page_number == page)
-               for c in chunks for part, page in sources)
+    return first_hit_rank(chunks, sources) is not None
 
 
 def main() -> None:
@@ -61,6 +69,10 @@ def main() -> None:
     ap.add_argument("--model", default="", help="chat model name (Ollama model, or OpenAI model with --provider openai)")
     ap.add_argument("--provider", default="", choices=["", "ollama", "openai"], help="override CHAT_PROVIDER from .env")
     ap.add_argument("--min-sim", type=float, default=None, help="override VECTOR_MIN_SIMILARITY for this run only")
+    ap.add_argument("--retriever", default="", choices=["", "own", "langchain", "langchain-default-tokenizer"],
+                    help="override RETRIEVER from .env for this run only")
+    ap.add_argument("--retrieval-only", action="store_true",
+                    help="only test that search finds the source page; the answer model is never called")
     args = ap.parse_args()
 
     s = get_settings()
@@ -74,8 +86,9 @@ def main() -> None:
     if not s.real_ai:
         raise SystemExit(f"AI_MODE is '{s.ai_mode}'. Set AI_MODE=real in .env first.")
     embedder = get_embedder(s)
-    retriever = HybridRetriever(LexicalRetriever(), VectorRetriever(embedder, s.vector_min_similarity))
-    provider = get_llm_provider(s)
+    retriever_kind = args.retriever or s.retriever
+    retriever = make_retriever(retriever_kind, s, embedder)
+    provider = None if args.retrieval_only else get_llm_provider(s)
     wanted = {int(x) for x in args.only.split(",") if x.strip()}
 
     with SessionLocal() as db:
@@ -84,7 +97,8 @@ def main() -> None:
         if not embedded:
             raise SystemExit(f"No chunks are embedded with '{embedder.model_name}'. Run:  python -m app.reprocess_all")
         print(f"Provider: {s.chat_provider} | Model: {chat_model} | Embeddings: {embedder.model_name} | "
-              f"min similarity: {s.vector_min_similarity} | {len(docs)} documents uploaded\n")
+              f"min similarity: {s.vector_min_similarity} | retriever: {retriever_kind} | {len(docs)} documents uploaded"
+              + (" | RETRIEVAL ONLY (no answer-model calls)" if args.retrieval_only else "") + "\n")
 
         rows = []
         for num, kind, scope, question, need, sources in SETS[args.set]:
@@ -99,6 +113,14 @@ def main() -> None:
                 ids = None   # search every uploaded document
             got = retriever.search(db, question, ids, s.retrieval_top_k)
             got_pages = [(c.document_name.replace(".pdf", "").replace(".docx", ""), c.page_number) for c in got.chunks]
+            if args.retrieval_only:
+                if not sources:
+                    continue          # refusal questions have no source page to find
+                rank = first_hit_rank(got.chunks, sources)
+                print(f"[{num:>3}] {'FOUND, rank ' + str(rank) if rank else 'MISSED'}  top: {got_pages}")
+                rows.append({"n": num, "kind": kind, "set": "cbse" if num < 100 else "policies", "question": question,
+                             "retrieval_found": rank is not None, "rank": rank})
+                continue
             t0 = time.time()
             try:
                 r = answer_question(db, question, ids, s, retriever, provider)
@@ -128,6 +150,23 @@ def main() -> None:
                          "answered": answered, "answer": text, "retrieval_found": retrieval, "seconds": round(secs, 1)})
 
     print("=" * 66)
+    if args.retrieval_only:
+        print(f"Retriever: {retriever_kind}")
+        for name in ("cbse", "policies", "all"):
+            part = [r for r in rows if name == "all" or r["set"] == name]
+            if not part:
+                continue
+            found = sum(r["retrieval_found"] for r in part)
+            mrr = sum((1 / r["rank"]) if r["rank"] else 0 for r in part) / len(part)
+            top1 = sum(r["rank"] == 1 for r in part)
+            print(f"{name.upper():9} found the source {found}/{len(part)} | first result is right {top1}/{len(part)} | mean reciprocal rank {mrr:.3f}")
+        out = Path("eval_results")
+        out.mkdir(exist_ok=True)
+        f = out / f"{datetime.now():%Y%m%d_%H%M%S}_retrieval_{retriever_kind}.json"
+        f.write_text(json.dumps({"retriever": retriever_kind, "embeddings": embedder.model_name,
+                                 "min_similarity": s.vector_min_similarity, "rows": rows}, indent=2), encoding="utf-8")
+        print(f"Saved: {f}")
+        return
     total_ok = 0
     for name in ("cbse", "policies"):
         part = [r for r in rows if r["set"] == name]

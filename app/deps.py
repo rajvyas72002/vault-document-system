@@ -23,11 +23,19 @@ def get_embedder(settings: Settings = Depends(get_settings)) -> Optional[Embedde
     return None
 
 
-def get_retriever(settings: Settings = Depends(get_settings), embedder: Optional[Embedder] = Depends(get_embedder)) -> Retriever:
+def make_retriever(kind: str, settings: Settings, embedder: Optional[Embedder]) -> Retriever:
+    """kind: own | langchain | langchain-default-tokenizer (the last one is only used by the evaluation)."""
     lexical = LexicalRetriever()
     if embedder is None:
         return lexical
+    if kind.startswith("langchain"):
+        from app.lc_retrieval import LangChainHybridRetriever
+        return LangChainHybridRetriever(embedder, settings.vector_min_similarity, default_tokenizer=kind.endswith("default-tokenizer"))
     return HybridRetriever(lexical, VectorRetriever(embedder, settings.vector_min_similarity))
+
+
+def get_retriever(settings: Settings = Depends(get_settings), embedder: Optional[Embedder] = Depends(get_embedder)) -> Retriever:
+    return make_retriever(settings.retriever, settings, embedder)
 
 
 def get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:

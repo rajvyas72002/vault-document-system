@@ -19,7 +19,7 @@ Built for the Outmarket.ai case study. FastAPI + PostgreSQL + Celery/Redis + Nex
 | Processing | Column-aware text extraction, page-aware chunking with overlap, embeddings, retry-safe state machine (`pending → processing → completed / failed`) |
 | Async | Job queue with three modes: `inline`, `background` (no Redis), `celery` (Redis + worker). `202 Accepted` + `GET /jobs/{id}` |
 | Chat | Chat sessions, multi-turn history, follow-up questions ("What about the vehicle policy?"), multi-document questions and comparisons |
-| Answers | Hybrid retrieval (BM25 + vectors), citations with page numbers, verified quotes, honest "not specified" refusals |
+| Answers | Hybrid retrieval (keywords + embeddings), citations with page numbers, verified quotes, honest "not specified" refusals |
 | Insights | Summary, key points, category, tags. Customisable length, focus and tone |
 | Feedback | Thumbs up / down on every answer and on every document summary, with an optional comment on a thumbs down |
 | Metrics | Document statistics, processing metrics (success rate, p95 duration, failure reasons, stuck documents), answer metrics (refusals, latency), user satisfaction |
@@ -31,8 +31,8 @@ Built for the Outmarket.ai case study. FastAPI + PostgreSQL + Celery/Redis + Nex
 
 ![Architecture: Next.js, FastAPI, Redis and Celery, PostgreSQL, the LangChain answer pipeline, OpenAI and Ollama](docs/architecture.png)
 
-LangChain provides the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the retriever interface (`BaseRetriever`) and the chain that runs the answer steps.
-The retrieval algorithm and the answer verification are our own code, because they are what the evaluation measures. Source of the diagram: `docs/architecture.svg`.
+LangChain provides the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the search (`BM25Retriever`, a vector store and `EnsembleRetriever`, exposed as a `BaseRetriever`) and the chain that runs the answer steps.
+The answer verification, and the word splitting that feeds keyword search, are our own code because they are specific to this problem. Source of the diagram: `docs/architecture.svg`.
 
 **Ingestion**
 
@@ -58,9 +58,9 @@ flowchart LR
     F -- yes --> RW[LLM rewrites it as a standalone question]
     F -- no --> R1
     RW --> R1[VaultRetriever: hybrid retrieval]
-    R1 --> L[BM25 keyword search]
-    R1 --> VS[Vector search]
-    L --> RRF[Reciprocal Rank Fusion]
+    R1 --> L[Keyword search]
+    R1 --> VS[Embedding search]
+    L --> RRF[Rank fusion: LangChain EnsembleRetriever]
     VS --> RRF
     RRF --> G[LLM answers from numbered passages, JSON only]
     G --> CHK{Quotes exist in the source? Numbers traceable?}
@@ -157,6 +157,7 @@ The API key goes in `.env` only (git-ignored). `check_openai` prints only the la
 | `OPENAI_BASE_URL`, `OPENAI_TEMPERATURE` | optional | Company gateway; temperature (default `0`, blank = do not send) |
 | `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL` | model names | Defaults `llama3.1:latest`, `nomic-embed-text` |
 | `VECTOR_MIN_SIMILARITY` | number | Cosine cut-off, default `0.5`. Measured: `0.3` was worse than `0.5` with OpenAI embeddings |
+| `RETRIEVER` | `langchain` (default) / `own` | LangChain's `EnsembleRetriever` (keyword + embedding search), or the earlier hand-written version. Both scored 60/60 |
 | `PIPELINE` | `langchain` (default) / `own` | The answer flow as a LangChain chain, or as a plain function. Same results |
 | `CHUNKER` | `own` (default) / `langchain` | Sliding window, or LangChain's sentence-aware splitter. See Evaluation |
 | `TASK_BACKEND` | `inline` / `background` / `celery` | How `/process` runs. See below |
@@ -199,7 +200,7 @@ The backend must be running; its `CORS_ORIGINS` setting (default `http://localho
 pytest
 ```
 
-At the last full run: **191 passed, 1 expected failure (xfail)**.
+At the last full run: **201 passed, 1 expected failure (xfail)**.
 
 - No test calls a real model or the network. Models are replaced by scripted fakes, so the suite is fast and deterministic.
 - The `.env` file can never leak into tests: the test client forces `ai_mode="mock"`.
@@ -214,6 +215,7 @@ At the last full run: **191 passed, 1 expected failure (xfail)**.
 python -m app.evaluate                          # all 60 questions with the model in .env
 python -m app.evaluate --set policies           # or: cbse
 python -m app.evaluate --only 8,117 --model gpt-4o
+python -m app.evaluate --retrieval-only --retriever langchain    # only checks that search finds the right page; no answer-model calls
 ```
 
 The set has two parts: **CBSE** (20 questions on a physics textbook chapter, including a misspelt question and 5 that must be refused) and **Policies** (40 questions over the six policy documents, including a misspelt question, cross-document comparisons, a reasoning question and 5 that must be refused).
@@ -221,8 +223,9 @@ Each question lists the facts the answer must contain and the page it must come 
 
 | Setup (OpenAI embeddings, similarity 0.5) | Total | CBSE | Policies | Retrieval found the source |
 |---|---|---|---|---|
-| gpt-4o, LangChain pipeline (the default) | **60/60** | 20/20 | 40/40 | 15/15 and 35/35 |
-| gpt-4o, plain-function pipeline | 60/60 | 20/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o, LangChain retriever and chain (the default) | **60/60** | 20/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o, hand-written retriever, LangChain chain | 60/60 | 20/20 | 40/40 | 15/15 and 35/35 |
+| gpt-4o, hand-written retriever and plain-function pipeline | 60/60 | 20/20 | 40/40 | 15/15 and 35/35 |
 | gpt-4o, LangChain sentence splitter | 59/60 | 19/20 | 40/40 | 15/15 and 35/35 |
 | gpt-4o-mini | 58 to 59/60 | 18 to 19/20 | 39 to 40/40 | 15/15 and 35/35 |
 
@@ -241,7 +244,7 @@ Each question lists the facts the answer must contain and the page it must come 
 | Answerable questions right | 42/50 | 48 to 49/50 | 50/50 |
 | Correctly refused | 10/10 | 10/10 | 10/10 |
 | Retrieval found the source | 49/50 | 50/50 | 50/50 |
-| Time per answer | mean 17.6 s (4 to 49 s) | about 1.4 to 3 s | about 1.4 to 3 s |
+| Time per answer | mean 17.6 s (4 to 49 s) | about 1.4 to 3 s | mean 1.7 s (1.2 to 2.7 s) |
 
 Analysis:
 - **Refusing is easy, answering is hard.** All three models refused all 10 unanswerable questions. The gap is entirely on answerable questions, where the local model got 42 of 50.
@@ -263,16 +266,17 @@ What these numbers mean, and do not mean:
 
 ## Design decisions and assumptions
 
-**LangChain for the wiring, our own code for what is measured.** The case study recommends LangChain, and the system uses it for the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the retriever interface (`BaseRetriever` returning `Document` objects) and the chain that runs retrieve, answer and verify.
-This was my first RAG project, and out of curiosity about how it works inside, I first wrote extraction, chunking, BM25 and vector search, rank fusion and the answer checks myself. Once that worked I moved the system onto LangChain and ran the same 60 questions both ways to compare them: the plain-function pipeline and the LangChain chain both score 60/60, so the framework adds a standard interface and tracing hooks without changing the answers.
-I kept the retrieval algorithm and the verifier as our own code because they are specific to this problem and are what the evaluation measures. The small interfaces (`Retriever`, `Embedder`, `LLMProvider`, `InsightGenerator`) mean a LangChain or LlamaIndex retriever can replace ours without changing the API.
+**LangChain for the wiring and the search, our own code for what keeps answers honest.** The case study recommends LangChain, and the system uses it for the model calls (`ChatOpenAI`, `OpenAIEmbeddings`), the search (`BM25Retriever`, a vector store and `EnsembleRetriever`, exposed as a `BaseRetriever` that returns `Document` objects) and the chain that runs retrieve, answer and verify.
+This was my first RAG project, and out of curiosity about how it works inside, I also built the whole retrieval by hand first (extraction, chunking, search, rank fusion and the answer checks), to learn how it works and to compare it with LangChain. I then rebuilt the search on LangChain's own retrievers and ran the same questions both ways. The hand-written version stays available as `RETRIEVER=own`.
+Results: both versions scored 60/60 with gpt-4o. Retrieval alone (50 questions with a source page, local embeddings) found the page 49/50 times for both, and put it first 46/50 times, but LangChain's keyword search with its default word splitting (spaces only, case-sensitive, no stemming) only put it first 38/50 times. So LangChain's search is fed our small word-splitting step, and then matches the hand-written one exactly.
+The verifier stays our own code because nothing in LangChain checks that quotes exist in the source.
 
 **Trust nothing the model says.** The LLM must return JSON with quotes. A quote is kept only if it can be found in the retrieved passages (after ignoring spacing, bullets, dash styles and superscripts, and allowing "..." inside a quote and a quote that continues into the next chunk). The text shown to the user is the document's own wording, not the model's copy.
 Every number in the answer must be traceable: it appears in a cited passage, on the same page as a cited passage, in the question, or is the difference of two quoted figures ("faster by 1 day" from 2 and 3 days). Anything else becomes "The uploaded documents do not specify an answer to this question." Document text is placed inside `<context>` tags and the prompt treats it as untrusted data (prompt-injection defence).
 These rules are looser than my first version. Each was relaxed after the evaluation showed correct answers being refused, and each has a test that also checks the matching wrong case is still rejected.
 Known gap: a verified quote proves the text exists, not that it answers the right question. We saw this twice (a vehicle-policy follow-up answered from the health policy, and the SI-units answer above). A relevance check is the next improvement.
 
-**Hybrid retrieval.** BM25 finds exact terms (numbers, names, codes). Embeddings find meaning ("cosmetic surgery" ↔ "cosmetic procedures", or a misspelt question). Scores are merged with Reciprocal Rank Fusion, which uses ranks only, because BM25 scores and cosine similarities are on different scales.
+**Hybrid retrieval.** Keyword search finds exact terms (numbers, names, codes). Embedding search finds meaning ("cosmetic surgery" ↔ "cosmetic procedures", or a misspelt question). The two rankings are merged by rank fusion (LangChain's `EnsembleRetriever`), which uses ranks only, because keyword scores and similarity scores are on different scales.
 
 **Column-aware extraction.** Two-column PDF pages (the textbook) were read line by line across both columns, which mixed sentences. Extraction now orders text blocks column by column.
 
@@ -304,7 +308,7 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 
 ## What is and is not done
 
-**Done and tested:** upload, column-aware processing, chunking, embeddings (OpenAI or local), hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, thumbs up / down feedback with metrics, metrics APIs, job tracking, async queue (three modes), health endpoint, LangChain pipeline, an evaluation script with 60 questions, 191 tests.
+**Done and tested:** upload, column-aware processing, chunking, embeddings (OpenAI or local), hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, thumbs up / down feedback with metrics, metrics APIs, job tracking, async queue (three modes), health endpoint, LangChain pipeline, an evaluation script with 60 questions, 201 tests.
 
 **Not done / limitations (honest list):**
 - **Verification checks that a quote exists, not that it is relevant.** A wrong answer can pass if its quotes are real.
@@ -319,6 +323,8 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 - **Follow-ups** are one level deep: a follow-up to a follow-up loses the first question in heuristic mode.
 - **Mock mode** (`AI_MODE=mock`) is keyword-only and handles follow-ups and synonyms poorly. It exists so the app and tests run without any AI.
 - **Cost tracking and rate limiting** are not implemented.
+- **`BM25Retriever` lives in `langchain-community`, which LangChain has marked as being sunset.** If it is removed, `RETRIEVER=own` keeps working with the hand-written search.
+- **A model sometimes glues a number to the next word** (once seen as "3business days"). The meaning is intact; it is cosmetic.
 - **Celery + Redis** was verified by hand on one machine (Windows, Memurai, `--pool=solo`), not in CI. On Windows a single solo worker adds a few seconds of pickup latency; on Linux use the default pool.
 
 See `REQUIREMENTS_CHECKLIST.md` for every requirement in the case study mapped to its status, `AI_USAGE.md` for how AI is used in the product and in development, `PROJECT_LOG.md` for what was built and what went wrong, and `DEMO.md` for a demo script.

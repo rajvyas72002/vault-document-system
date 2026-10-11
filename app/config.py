@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     chunker: Literal["own", "langchain"] = "own"
     # langchain (default): LangChain BaseRetriever + chain | own: the same steps as a plain function (same results, kept as a fallback)
     pipeline: Literal["own", "langchain"] = "langchain"
+    # langchain (default): BM25Retriever + vector store + EnsembleRetriever, with our tokenizer (app/lc_retrieval.py)
+    # | own: our own BM25 + vector + rank fusion (app/retrieval.py), kept as a fallback. Both scored 60/60 (see README).
+    retriever: Literal["own", "langchain"] = "langchain"
     # --- background processing ---
     # inline: process inside the request (simple, blocks) | background: FastAPI background task (no Redis)
     # | celery: real queue (Redis + a worker process)

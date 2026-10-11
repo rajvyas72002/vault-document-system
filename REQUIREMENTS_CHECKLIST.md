@@ -1,7 +1,7 @@
 # Requirements checklist (traced to the case study PDF)
 
 Status: DONE = built and tested | PARTIAL = works but incomplete | MOCK = fake/placeholder | TODO = not started
-Last updated: 2026-10-11 (191 tests in my container, to be confirmed locally; Celery and frontend verified by hand)
+Last updated: 2026-10-11 (201 tests; Celery and frontend verified by hand)
 
 ## Backend components
 | PDF requirement | Status | Notes |
@@ -32,12 +32,12 @@ Last updated: 2026-10-11 (191 tests in my container, to be confirmed locally; Ce
 ## RAG quality
 | Item | Status | Notes |
 |---|---|---|
-| Retrieval | DONE | BM25 + vector, fused with RRF |
+| Retrieval | DONE | keyword + embedding search merged by rank fusion: LangChain EnsembleRetriever by default, hand-written version kept (RETRIEVER=own); both 60/60 |
 | Citations | DONE | document, page, exact quote, verified against source |
 | Anti-hallucination | DONE | coverage gate, quote + number verification, "not specified" answers |
 | Local LLM (Ollama) | DONE | llama3.1 verified on 3 questions; not a benchmark |
 | Real provider (OpenAI) | DONE | AI_MODE=real, CHAT_PROVIDER/EMBED_PROVIDER=openai via LangChain; evaluation gpt-4o 60/60 (small set, CBSE part partly tuned) |
-| LangChain / LlamaIndex | DONE | ChatOpenAI, OpenAIEmbeddings, BaseRetriever, LCEL chain. Retrieval algorithm and verifier are our own code (I first built them by hand out of curiosity and compared: same 60/60) |
+| LangChain / LlamaIndex | DONE | ChatOpenAI, OpenAIEmbeddings, BM25Retriever + vector store + EnsembleRetriever (as a BaseRetriever), LCEL chain. Verifier and word splitting are our own code. I first built retrieval by hand out of curiosity and compared: both 60/60 |
 
 ## Deliverables
 | Item | Status |
@@ -46,7 +46,7 @@ Last updated: 2026-10-11 (191 tests in my container, to be confirmed locally; Ce
 | Git repository | DONE (local; GitHub push TODO) |
 | README.md with architecture + assumptions | DONE | architecture diagrams, setup, API, assumptions, honest limitations |
 | AI_USAGE.md | DONE | has ONE placeholder line for other AI tools Raj used: fill in or delete |
-| Tests (pytest) | DONE: 191 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
+| Tests (pytest) | DONE: 201 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
 | Demo of document chat | PARTIAL | DEMO.md script written; live rehearsal still to do |
 
 ## Optional / bonus

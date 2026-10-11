@@ -12,3 +12,7 @@ celery[redis]
 langchain-core>=1.0,<2
 langchain-openai>=1.0,<2
 langchain-text-splitters>=1.0,<2
+langchain-classic>=1.0,<2      # EnsembleRetriever (only used when RETRIEVER=langchain)
+langchain-community>=0.4,<1    # BM25Retriever (only used when RETRIEVER=langchain)
+rank-bm25
+numpy

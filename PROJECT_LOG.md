@@ -37,5 +37,8 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 - Added thumbs up / down on answers and on document summaries, with `message_feedback` and `insight_feedback` tables and `/metrics/feedback`.
 - Architecture diagram added: `docs/architecture.png`.
 - Local model run (llama3.1 + nomic): 52/60, mean 17.6 s per answer; comparison card and chart in `docs/`.
-- Test count: 191 passed, 1 xfailed in my container; to be confirmed on my machine.
+- Added a LangChain search (`RETRIEVER=langchain`: BM25Retriever + vector store + EnsembleRetriever, `app/lc_retrieval.py`) and `python -m app.evaluate --retrieval-only`. Retrieval-only comparison on 50 questions (local embeddings): hand-written 49/50 found, 46/50 first; LangChain default word splitting 48/50 and 38/50; LangChain with our word splitting 49/50 and 46/50.
+- Full gpt-4o run with the LangChain retriever: 60/60 (15/15 and 35/35 retrieval, about 1.7 s per answer), so it became the default. Hand-written search kept as `RETRIEVER=own`.
+- Fixed a crash when a question's embedding is all zeros. LangChain's logs said "No relevant docs..." for every refusal; silenced.
+- Test count: 201 passed, 1 xfailed.
 - Still open: relevance check for true-but-irrelevant quotes; OpenAI-embedding rows of the model comparison; re-cut the demo video; cost tracking.

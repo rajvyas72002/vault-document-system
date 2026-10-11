@@ -33,7 +33,7 @@ About 8 minutes. Wording of LLM answers can vary slightly from run to run; the f
 3. `GET /chats/{chat_id}/history` → the full conversation with citations stored per answer.
 
 ## 4. Meaning, not just keywords
-- `Does the policy cover cosmetic surgery?` → "No. Cosmetic procedures are excluded...". The document says "procedures", not "surgery". Say: keyword search alone fails here; this is why retrieval is hybrid (BM25 + embeddings).
+- `Does the policy cover cosmetic surgery?` → "No. Cosmetic procedures are excluded...". The document says "procedures", not "surgery". Say: keyword search alone fails here; this is why retrieval is hybrid (keywords + embeddings).
 
 ## 5. Honesty (what makes it trustworthy)
 - `What is the support phone number for the fictional retailer?` → **"The uploaded documents do not specify an answer to this question."** with no citations. The refund policy has no phone number, so any number would be invented.
