@@ -44,6 +44,10 @@ def answer_question(
     retrieval_query lets a chat follow-up search with earlier context while the provider still sees
     the user's own words plus the history.
     If nothing relevant is found, or the provider cannot ground its answer, we say so."""
+    if getattr(settings, "pipeline", "own") == "langchain":
+        from app.lc_pipeline import build_answer_chain
+        chain = build_answer_chain(db, document_ids, settings, retriever, provider)
+        return chain.invoke({"question": question, "retrieval_query": retrieval_query, "history": list(history)})
     retrieved = retriever.search(db, retrieval_query or question, document_ids, settings.retrieval_top_k)
     result = provider.generate(question, retrieved, settings.min_coverage, history) if retrieved.chunks else None
     if result is None:
