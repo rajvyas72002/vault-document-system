@@ -16,3 +16,5 @@ demo/
 # stray recordings
 *.mp4
 video_arch.png
+
+eval_results/

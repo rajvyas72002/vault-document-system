@@ -50,7 +50,7 @@ def main() -> None:
             print("LLM error:", exc); return
         raw = (data.get("message") or {}).get("content", "")
         print("\n[4] RAW LLM OUTPUT:\n", raw)
-        verified = parse_and_verify(raw, res.chunks, s.ollama_chat_model)
+        verified = parse_and_verify(raw, res.chunks, s.ollama_chat_model, question)
         print("\n[5] AFTER VERIFICATION:", "ACCEPTED -> " + verified.text if verified else "REJECTED (unsupported, bad quote, or number mismatch)")
 
 

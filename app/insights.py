@@ -234,7 +234,7 @@ class OllamaInsightGenerator:
 
 
 def get_insight_generator_for(settings) -> InsightGenerator:
-    if settings.ai_mode == "ollama":
+    if settings.real_ai:
         return OllamaInsightGenerator(OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds),
                                       settings.ollama_chat_model)
     return ExtractiveInsightGenerator()

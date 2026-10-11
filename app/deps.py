@@ -7,14 +7,16 @@ from fastapi import BackgroundTasks, Depends
 from app.config import Settings, get_settings
 from app.conversation import OllamaRewriter
 from app.insights import InsightGenerator, get_insight_generator_for
-from app.embeddings import Embedder, OllamaEmbedder
+from app.embeddings import Embedder, OllamaEmbedder, build_openai_embedder
 from app.ollama import OllamaClient
 from app.providers import LLMProvider, get_llm_provider
 from app.retrieval import HybridRetriever, LexicalRetriever, Retriever, VectorRetriever
 
 
 def get_embedder(settings: Settings = Depends(get_settings)) -> Optional[Embedder]:
-    if settings.ai_mode == "ollama":
+    if settings.real_ai and settings.embed_provider == "openai":
+        return build_openai_embedder(settings)
+    if settings.real_ai:
         client = OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds)
         return OllamaEmbedder(client, settings.ollama_embed_model,
                               settings.ollama_embed_doc_prefix, settings.ollama_embed_query_prefix)
@@ -34,7 +36,7 @@ def get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
 
 def get_rewriter(settings: Settings = Depends(get_settings)) -> Optional[OllamaRewriter]:
     """Rewrites chat follow-ups into standalone questions. Only available with a real LLM."""
-    if settings.ai_mode == "ollama":
+    if settings.real_ai:
         return OllamaRewriter(OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds), settings.ollama_chat_model)
     return None
 
