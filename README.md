@@ -235,6 +235,8 @@ Each question lists the facts the answer must contain and the page it must come 
 
 ![Accuracy and time per answer for the three models](docs/model_comparison_chart.png)
 
+![Conclusion and trade-offs: when to use each of the three models](docs/model_tradeoffs_card.png)
+
 | | llama3.1 (local) | gpt-4o-mini | gpt-4o |
 |---|---|---|---|
 | Embeddings | nomic-embed-text (Ollama) | text-embedding-3-small | text-embedding-3-small |
