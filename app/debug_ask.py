@@ -6,7 +6,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import get_embedder
 from app.ollama import OllamaClient
-from app.providers import ProviderError, build_messages, parse_and_verify
+from app.providers import ProviderError, build_messages, get_llm_provider, parse_and_verify
 from app.retrieval import HybridRetriever, LexicalRetriever, VectorRetriever, cosine
 from app.models import Document, DocumentChunk
 from sqlalchemy import select
@@ -18,7 +18,7 @@ def main() -> None:
     print("AI_MODE:", s.ai_mode, "| min_similarity:", s.vector_min_similarity, "| min_coverage:", s.min_coverage)
     embedder = get_embedder(s)
     if embedder is None:
-        print("Embedder is None -> AI_MODE is not ollama. Stop."); return
+        print("Embedder is None -> AI_MODE is mock. Stop."); return
     with SessionLocal() as db:
         lex = LexicalRetriever().search(db, question, None, 5)
         print(f"\n[1] LEXICAL kept {len(lex.chunks)} chunk(s)")
@@ -41,16 +41,19 @@ def main() -> None:
         if not res.chunks:
             print("    -> nothing retrieved, so the LLM is never called. Lower VECTOR_MIN_SIMILARITY."); return
 
-        client = OllamaClient(s.ollama_base_url, s.ollama_timeout_seconds)
-        payload = {"model": s.ollama_chat_model, "messages": build_messages(question, res.chunks, ()),
-                   "stream": False, "format": "json", "options": {"temperature": 0, "num_ctx": 4096}}
+        model = s.openai_chat_model if s.chat_provider == "openai" else s.ollama_chat_model
         try:
-            data = client.request("POST", "/api/chat", payload, ProviderError, s.ollama_chat_model)
+            if s.chat_provider == "openai":   # hosted model, same call the app makes
+                raw = get_llm_provider(s).ask_raw(question, res.chunks, ())
+            else:
+                client = OllamaClient(s.ollama_base_url, s.ollama_timeout_seconds)
+                payload = {"model": model, "messages": build_messages(question, res.chunks, ()),
+                           "stream": False, "format": "json", "options": {"temperature": 0, "num_ctx": 4096}}
+                raw = (client.request("POST", "/api/chat", payload, ProviderError, model).get("message") or {}).get("content", "")
         except ProviderError as exc:
             print("LLM error:", exc); return
-        raw = (data.get("message") or {}).get("content", "")
         print("\n[4] RAW LLM OUTPUT:\n", raw)
-        verified = parse_and_verify(raw, res.chunks, s.ollama_chat_model, question)
+        verified = parse_and_verify(raw, res.chunks, model, question)
         print("\n[5] AFTER VERIFICATION:", "ACCEPTED -> " + verified.text if verified else "REJECTED (unsupported, bad quote, or number mismatch)")
 
 
