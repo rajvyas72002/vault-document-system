@@ -98,7 +98,7 @@ Interactive docs: `http://127.0.0.1:8000/docs`
 | `PUT` / `DELETE /documents/{id}/insights/feedback` | Thumbs up / down on the summary, or take it back |
 | `POST /search` | Retrieval only. Shows exactly which passages an answer would use |
 | `POST /ask` | One-off question with citations |
-| `POST /chats`, `GET /chats` | Start / list chat sessions |
+| `POST /chats`, `GET /chats`, `DELETE /chats/{id}` | Start / list / delete chat sessions (deleting also removes that chat's ratings; documents are untouched) |
 | `POST /chats/{id}/messages` | Ask inside a conversation (multi-turn) |
 | `PUT` / `DELETE /chats/{id}/messages/{message_id}/feedback` | Thumbs up / down on an answer, or take it back |
 | `GET /chats/{id}/history` | Full history with citations and ratings |
@@ -200,7 +200,7 @@ The backend must be running; its `CORS_ORIGINS` setting (default `http://localho
 pytest
 ```
 
-At the last full run: **210 passed, 1 expected failure (xfail)**.
+At the last full run: **212 passed, 1 expected failure (xfail)**.
 
 - No test calls a real model or the network. Models are replaced by scripted fakes, so the suite is fast and deterministic.
 - The `.env` file can never leak into tests: the test client forces `ai_mode="mock"`.
@@ -308,7 +308,7 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 
 ## What is and is not done
 
-**Done and tested:** upload, column-aware processing, chunking, embeddings (OpenAI or local), hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, thumbs up / down feedback with metrics, metrics APIs, job tracking, async queue (three modes), health endpoint, LangChain pipeline, an evaluation script with 60 questions, 210 tests.
+**Done and tested:** upload, column-aware processing, chunking, embeddings (OpenAI or local), hybrid retrieval, cited and verified answers, chat sessions with history and follow-ups, insights, thumbs up / down feedback with metrics, metrics APIs, job tracking, async queue (three modes), health endpoint, LangChain pipeline, an evaluation script with 60 questions, 212 tests.
 
 **Not done / limitations (honest list):**
 - **Verification checks that a quote exists, not that it is relevant.** A wrong answer can pass if its quotes are real.

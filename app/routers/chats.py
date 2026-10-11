@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -55,6 +55,19 @@ def start_chat(body: ChatCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=List[ChatSessionOut])
 def list_chats(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
     return db.scalars(select(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit).offset(offset)).all()
+
+
+@router.delete("/{chat_id}", status_code=204)
+def delete_chat(chat_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Remove one conversation with its messages and any thumbs up / down on them.
+    Documents are not touched. The ratings go with the chat, so the feedback metrics change too."""
+    get_chat_or_404(db, chat_id)
+    message_ids = select(ChatMessage.id).where(ChatMessage.session_id == chat_id)
+    db.execute(delete(MessageFeedback).where(MessageFeedback.message_id.in_(message_ids)))
+    db.execute(delete(ChatMessage).where(ChatMessage.session_id == chat_id))
+    db.execute(delete(ChatSession).where(ChatSession.id == chat_id))
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{chat_id}/history", response_model=ChatHistory)

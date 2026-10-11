@@ -41,5 +41,6 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 - Full gpt-4o run with the LangChain retriever: 60/60 (15/15 and 35/35 retrieval, about 1.7 s per answer), so it became the default. Hand-written search kept as `RETRIEVER=own`.
 - Fixed a crash when a question's embedding is all zeros. LangChain's logs said "No relevant docs..." for every refusal; silenced.
 - Follow-up rewriting now follows the chat provider (gpt-4o via LangChain when CHAT_PROVIDER=openai, so a hosted setup no longer needs Ollama for it). Insights follow the chat provider too (LangChainInsightGenerator, same prompt and verification as the Ollama one), so with OpenAI selected nothing needs Ollama.
-- Test count: 210 passed, 1 xfailed.
+- Chat page: scrolls only when a message arrives (clicking a thumb used to scroll). Added `DELETE /chats/{id}` and a delete button per chat in the sidebar (removes messages and their ratings; documents untouched).
+- Test count: 212 passed, 1 xfailed.
 - Still open: relevance check for true-but-irrelevant quotes; OpenAI-embedding rows of the model comparison; re-cut the demo video; cost tracking.

@@ -1,7 +1,7 @@
 # Requirements checklist (traced to the case study PDF)
 
 Status: DONE = built and tested | PARTIAL = works but incomplete | MOCK = fake/placeholder | TODO = not started
-Last updated: 2026-10-11 (210 tests; Celery and frontend verified by hand)
+Last updated: 2026-10-11 (212 tests; Celery and frontend verified by hand)
 
 ## Backend components
 | PDF requirement | Status | Notes |
@@ -46,7 +46,7 @@ Last updated: 2026-10-11 (210 tests; Celery and frontend verified by hand)
 | Git repository | DONE (local; GitHub push TODO) |
 | README.md with architecture + assumptions | DONE | architecture diagrams, setup, API, assumptions, honest limitations |
 | AI_USAGE.md | DONE | has ONE placeholder line for other AI tools Raj used: fill in or delete |
-| Tests (pytest) | DONE: 210 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
+| Tests (pytest) | DONE: 212 passed, 1 xfailed (known synonym limitation in mock mode). Tests are isolated from .env (mock AI, inline tasks) |
 | Demo of document chat | PARTIAL | DEMO.md script written; live rehearsal still to do |
 
 ## Optional / bonus

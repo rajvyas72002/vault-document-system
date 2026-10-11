@@ -49,6 +49,9 @@ export const api = {
   createChat: async (documentIds) =>
     (await request("/chats", json("POST", { document_ids: documentIds }))).data,
   chatHistory: async (id) => (await request(`/chats/${id}/history`)).data,
+  deleteChat: async (id) => {
+    await request(`/chats/${id}`, { method: "DELETE" });
+  },
   sendMessage: async (id, question) =>
     (await request(`/chats/${id}/messages`, json("POST", { question }))).data,
   // thumbs up / down on one answer; sending again replaces it, clearRating takes it back

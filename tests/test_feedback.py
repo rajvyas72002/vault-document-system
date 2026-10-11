@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from app.models import MessageFeedback
+from app.models import ChatMessage, ChatSession, MessageFeedback
 
 POLICIES = Path(__file__).resolve().parent.parent / "data" / "policies"
 
@@ -139,3 +139,31 @@ def test_summary_ratings_show_in_the_feedback_metrics_separately_from_answers(cl
     body = client.get("/metrics/feedback").json()
     assert body["summaries"] == {"summaries_total": 2, "rated": 2, "thumbs_up": 1, "thumbs_down": 1, "satisfaction_rate": 0.5}
     assert body["rated"] == 0 and body["satisfaction_rate"] is None               # answers are counted on their own
+
+
+# ----------------------------------------------------------------------------- deleting a chat
+
+def test_deleting_a_chat_removes_its_messages_and_ratings_only(client):
+    chat, msg = ask(client)
+    other = client.post("/chats", json={}).json()["id"]
+    client.post(f"/chats/{other}/messages", json={"question": "How many annual leave days are provided per year?"})
+    client.put(url(chat, msg), json={"rating": "up"})
+    docs_before = client.get("/documents").json()["total"]
+
+    assert client.delete(f"/chats/{chat}").status_code == 204
+
+    assert client.get(f"/chats/{chat}/history").status_code == 404
+    assert chat not in [c["id"] for c in client.get("/chats").json()]
+    with client.session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(MessageFeedback)) == 0
+        assert db.scalar(select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == uuid.UUID(chat))) == 0
+        assert db.scalar(select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == uuid.UUID(other))) == 2
+        assert db.get(ChatSession, uuid.UUID(other)) is not None            # the other chat is untouched
+    assert client.get("/documents").json()["total"] == docs_before          # documents are never deleted with a chat
+
+
+def test_deleting_a_missing_chat_is_a_404(client):
+    assert client.delete(f"/chats/{uuid.uuid4()}").status_code == 404
+    chat = client.post("/chats", json={}).json()["id"]
+    assert client.delete(f"/chats/{chat}").status_code == 204
+    assert client.delete(f"/chats/{chat}").status_code == 404

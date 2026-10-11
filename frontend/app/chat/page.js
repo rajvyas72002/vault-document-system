@@ -68,9 +68,11 @@ export default function ChatPage() {
     })();
   }, []);
 
+  // scroll down only when a message arrives or the pending reply becomes the real answer, not when a thumb is clicked
+  const lastKey = `${messages.length}:${messages[messages.length - 1]?.id ?? ""}`;
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [lastKey]);
 
   // keep the thumbs in the page state so the buttons update at once, without reloading the history
   function onRated(messageId, rating, comment) {
@@ -82,6 +84,21 @@ export default function ChatPage() {
     setError("");
     try {
       setMessages((await api.chatHistory(id)).messages);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function removeChat(id) {
+    if (!window.confirm("Delete this chat and its ratings? Documents are not affected.")) return;
+    setError("");
+    try {
+      await api.deleteChat(id);
+      if (id === chatId) {
+        setChatId(null);
+        setMessages([]);
+      }
+      await refreshChats();
     } catch (e) {
       setError(e.message);
     }
@@ -147,13 +164,24 @@ export default function ChatPage() {
             <h2>Chats</h2>
             {chats.length === 0 && <div className="muted">None yet.</div>}
             {chats.map((c) => (
-              <button
-                key={c.id}
-                className={c.id === chatId ? "" : "secondary"}
-                onClick={() => openChat(c.id)}
-              >
-                {c.title || "New chat"}
-              </button>
+              <div key={c.id} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                <button
+                  className={c.id === chatId ? "" : "secondary"}
+                  style={{ flex: 1, margin: 0 }}
+                  onClick={() => openChat(c.id)}
+                >
+                  {c.title || "New chat"}
+                </button>
+                <button
+                  className="secondary"
+                  style={{ width: "auto", margin: 0, padding: "0 10px" }}
+                  title="Delete this chat"
+                  aria-label="Delete this chat"
+                  onClick={() => removeChat(c.id)}
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         </aside>
