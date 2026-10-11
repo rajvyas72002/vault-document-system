@@ -40,3 +40,29 @@ def test_page_numbers_preserved_and_indexes_continuous():
     assert {c.page_number for c in chunks} == {1, 2}
     assert all("alpha" in c.text for c in chunks if c.page_number == 1)
     assert all("beta" in c.text for c in chunks if c.page_number == 2)
+
+
+def test_langchain_splitter_ends_chunks_at_sentence_boundaries():
+    pytest.importorskip("langchain_text_splitters")
+    from app.chunking import split_text_langchain
+    text = " ".join(f"This is sentence number {i} of the document." for i in range(40))
+    pieces = split_text_langchain(text, 200, 40)
+    assert len(pieces) > 1
+    assert all(len(p) <= 200 for p in pieces)
+    assert all(p.endswith(".") for p in pieces)          # never cut mid-sentence
+    assert all(p.startswith("This") or p[0].isalpha() for p in pieces)
+
+
+def test_chunk_pages_uses_the_chosen_chunker_and_keeps_page_numbers():
+    pytest.importorskip("langchain_text_splitters")
+    pages = [PageText(1, "One. Two. Three."), PageText(2, "Four. Five.")]
+    chunks = chunk_pages(pages, 200, 40, chunker="langchain")
+    assert [c.page_number for c in chunks] == [1, 2]
+
+
+def test_langchain_splitter_does_not_leak_regex_separators_into_text():
+    pytest.importorskip("langchain_text_splitters")
+    from app.chunking import split_text_langchain
+    text = " ".join(f"Sentence {i} ends here." for i in range(60))
+    for piece in split_text_langchain(text, 120, 30):
+        assert "(?<=" not in piece and "\\s" not in piece

@@ -46,7 +46,7 @@ def process_document(db: Session, document_id: uuid.UUID, settings: Settings,
             raise ExtractionError(
                 "No extractable text found. The file may be a scanned PDF; OCR is not supported yet."
             )
-        chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
+        chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap, settings.chunker)
 
         db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))  # makes retries safe
         rows = [

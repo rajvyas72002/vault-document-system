@@ -55,10 +55,29 @@ def split_text(text: str, chunk_size: int, overlap: int) -> List[str]:
     return pieces
 
 
-def chunk_pages(pages: List[PageText], chunk_size: int, overlap: int) -> List[Chunk]:
+def split_text_langchain(text: str, chunk_size: int, overlap: int) -> List[str]:
+    """LangChain's RecursiveCharacterTextSplitter, tried in this order: paragraph break, sentence end, space.
+    So a chunk ends at the end of a sentence whenever one fits, instead of at the nearest space."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if not 0 <= overlap < chunk_size:
+        raise ValueError("overlap must be >= 0 and smaller than chunk_size")
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("CHUNKER=langchain needs: pip install langchain-text-splitters") from exc
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=overlap, is_separator_regex=True, keep_separator="end",
+        separators=[r"\n\n", r"(?<=[.!?])\s+", r"\s+", ""],
+    )
+    return [p for p in splitter.split_text(normalize_text(text)) if p.strip()]
+
+
+def chunk_pages(pages: List[PageText], chunk_size: int, overlap: int, chunker: str = "own") -> List[Chunk]:
     """Chunk page by page so every chunk belongs to exactly one page (clean citations)."""
+    split = split_text_langchain if chunker == "langchain" else split_text
     chunks: List[Chunk] = []
     for page in pages:
-        for piece in split_text(page.text, chunk_size, overlap):
+        for piece in split(page.text, chunk_size, overlap):
             chunks.append(Chunk(len(chunks), page.page_number, piece))
     return chunks

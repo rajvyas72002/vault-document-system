@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     chunk_size: int = 800      # characters per chunk
     chunk_overlap: int = 150   # characters shared between neighbouring chunks
+    # own: sliding window | langchain: RecursiveCharacterTextSplitter (sentence-aware). Re-run reprocess_all after changing.
+    chunker: Literal["own", "langchain"] = "own"
     # --- background processing ---
     # inline: process inside the request (simple, blocks) | background: FastAPI background task (no Redis)
     # | celery: real queue (Redis + a worker process)
