@@ -36,5 +36,6 @@ Plain record of what was built, in order, and what went wrong. Newest informatio
 - LangChain integration: `VaultRetriever` (BaseRetriever), LCEL answer chain (`PIPELINE=langchain`, default), optional splitter (`CHUNKER`). Retrieval algorithm and verifier remain our own code. I first built the retrieval by hand out of curiosity, then compared.
 - Added thumbs up / down on answers and on document summaries, with `message_feedback` and `insight_feedback` tables and `/metrics/feedback`.
 - Architecture diagram added: `docs/architecture.png`.
+- Local model run (llama3.1 + nomic): 52/60, mean 17.6 s per answer; comparison card and chart in `docs/`.
 - Test count: 191 passed, 1 xfailed in my container; to be confirmed on my machine.
-- Still open: relevance check for true-but-irrelevant quotes; re-measure the local model; model comparison for the demo; re-cut the demo video; cost tracking.
+- Still open: relevance check for true-but-irrelevant quotes; OpenAI-embedding rows of the model comparison; re-cut the demo video; cost tracking.

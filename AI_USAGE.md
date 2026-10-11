@@ -39,7 +39,7 @@ Prompts are in `app/providers.py` (answering), `app/conversation.py` (rewriting)
 - Follow-up questions are understood without the user restating context.
 
 ### Measured quality
-`python -m app.evaluate` runs 60 questions (see README, Evaluation). With `gpt-4o` and OpenAI embeddings it scored 60/60; `gpt-4o-mini` 58 to 59/60. The question set is small and the CBSE part was partly tuned. The local `llama3.1` scored 8/20 on the CBSE part in an early run and has not been re-measured with the current code.
+`python -m app.evaluate` runs 60 questions (see README, Evaluation). With `gpt-4o` and OpenAI embeddings it scored 60/60; `gpt-4o-mini` 58 to 59/60. The question set is small and the CBSE part was partly tuned. The local `llama3.1` with `nomic-embed-text` scored 52/60 (about 17.6 s per answer on a laptop). Side-by-side card and chart: `docs/model_comparison_card.png`.
 
 ### Limits of the AI parts
 - Verification proves a quote exists in the document, not that it is the right quote for the question. We saw this with a wrong "joule and newton" answer.

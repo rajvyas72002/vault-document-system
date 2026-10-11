@@ -226,12 +226,38 @@ Each question lists the facts the answer must contain and the page it must come 
 | gpt-4o, LangChain sentence splitter | 59/60 | 19/20 | 40/40 | 15/15 and 35/35 |
 | gpt-4o-mini | 58 to 59/60 | 18 to 19/20 | 39 to 40/40 | 15/15 and 35/35 |
 
+### Model comparison
+
+![Side-by-side comparison of llama3.1 (local), gpt-4o-mini and gpt-4o on the same 60 questions](docs/model_comparison_card.png)
+
+![Accuracy and time per answer for the three models](docs/model_comparison_chart.png)
+
+| | llama3.1 (local) | gpt-4o-mini | gpt-4o |
+|---|---|---|---|
+| Embeddings | nomic-embed-text (Ollama) | text-embedding-3-small | text-embedding-3-small |
+| Total | 52/60 | 58 to 59/60 | **60/60** |
+| Textbook (CBSE) | 15/20 | 18 to 19/20 | 20/20 |
+| Policies | 37/40 | 39 to 40/40 | 40/40 |
+| Answerable questions right | 42/50 | 48 to 49/50 | 50/50 |
+| Correctly refused | 10/10 | 10/10 | 10/10 |
+| Retrieval found the source | 49/50 | 50/50 | 50/50 |
+| Time per answer | mean 17.6 s (4 to 49 s) | about 1.4 to 3 s | about 1.4 to 3 s |
+
+Analysis:
+- **Refusing is easy, answering is hard.** All three models refused all 10 unanswerable questions. The gap is entirely on answerable questions, where the local model got 42 of 50.
+- **Retrieval is not the problem.** The right page was found for 49 of 50 questions with the local embeddings and 50 of 50 with OpenAI's. The 8 local misses are the model's reading of the passage, not search.
+- **What the local model gets wrong:** five textbook questions answered incompletely or without the "why" (for example the sum of 436.32 g, 227.2 g and 0.301 g: it gave the rounded number but not the reason); one question with two valid answers where it gave one; one parental-leave answer rejected by the verifier because the model wrote "according to passage 1" and the "1" is not in the document.
+- **One wrong answer passed verification.** Asked "Can I cancel my order after it has been dispatched?", the local model answered "Yes" and quoted a real sentence: "After dispatch, the return process applies." The quote exists but does not support "yes". This is the known gap: verification proves a quote exists, not that it answers the question. gpt-4o answered correctly.
+- **Speed.** The local model needed 17.6 s on average on a laptop, against about 2 s hosted, so the hosted model is also about 8 times faster.
+- **Takeaway:** the local model is usable for a private, offline setup and the verifier keeps it from inventing text, but the hosted gpt-4o is clearly better. The recommended setting is gpt-4o with OpenAI embeddings.
+- **Limits of this comparison:** the three setups differ in both the answering model and the embeddings, so the table does not separate their effects. Mixed setups (local embeddings with gpt-4o, or OpenAI embeddings with llama3.1) were not run. OpenAI timings are approximate; the local timings come from one full run on my laptop.
+
 What these numbers mean, and do not mean:
 - It is a small set written by me, not a benchmark. The CBSE questions were used while fixing problems, so that part is partly tuned; the policy questions were not tuned against and are the fairer signal.
 - The LangChain pipeline gives the same results as the plain function: the move to LangChain changed the wiring, not the answers.
 - The LangChain sentence splitter scored one point lower: with the new chunk boundaries the passage for "which two extra SI units?" fell out of the top results and the model answered "joule and newton". The verifier accepted it because the quotes exist in the document. The splitter stays available (`CHUNKER=langchain`) but is off by default.
 - gpt-4o-mini sometimes drops an item from a list (it named two of three formulas in one question). gpt-4o did not.
-- The local model (`llama3.1`) scored 8/20 on the CBSE part in the first run, before the verification fixes described below. It has not been re-measured with the current code.
+- The local model (`llama3.1` with `nomic-embed-text`) scored 52/60 with the current code. See the comparison above.
 
 ---
 
@@ -282,7 +308,7 @@ Known gap: a verified quote proves the text exists, not that it answers the righ
 
 **Not done / limitations (honest list):**
 - **Verification checks that a quote exists, not that it is relevant.** A wrong answer can pass if its quotes are real.
-- **The local model is weaker.** `llama3.1` is slow on a laptop (7 to 50 seconds per answer) and was not re-measured after the verification fixes. The hosted model answers in about 2 seconds.
+- **The local model is weaker.** `llama3.1` is slow on a laptop (4 to 49 seconds per answer, 17.6 on average) and scored 52/60 against 60/60 for the hosted gpt-4o. The hosted model answers in about 2 seconds.
 - **The evaluation is small and partly tuned** (see Evaluation). The hosted-model path is verified by the evaluation runs, not by automated tests.
 - **Follow-up rewriting and insights still use the local Ollama model.** Without Ollama running, follow-ups fall back to the keyword heuristic.
 - **Frontend is minimal and untested by code.** It works against the real API but has no automated tests, no auth, and no streaming.
