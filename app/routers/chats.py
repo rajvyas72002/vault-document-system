@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,7 @@ from app.config import Settings, get_settings
 from app.conversation import MAX_HISTORY_MESSAGES, OllamaRewriter, build_retrieval_query, is_follow_up, to_history
 from app.db import get_db
 from app.deps import get_provider, get_retriever, get_rewriter
-from app.models import ChatMessage, ChatSession
+from app.models import ChatMessage, ChatSession, MessageFeedback
 from app.providers import LLMProvider
 from app.qa import answer_question
 from app.retrieval import Retriever
@@ -23,6 +23,8 @@ from app.schemas import (
     ChatMessageOut,
     ChatSessionOut,
     CitationOut,
+    FeedbackIn,
+    FeedbackOut,
     MessageRequest,
 )
 
@@ -59,7 +61,17 @@ def list_chats(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0
 def chat_history(chat_id: uuid.UUID, db: Session = Depends(get_db)):
     chat = get_chat_or_404(db, chat_id)
     messages = db.scalars(select(ChatMessage).where(ChatMessage.session_id == chat.id).order_by(ChatMessage.seq)).all()
-    return ChatHistory(session=ChatSessionOut.model_validate(chat), messages=[ChatMessageOut.model_validate(m) for m in messages])
+    ratings = {
+        f.message_id: f
+        for f in db.scalars(select(MessageFeedback).where(MessageFeedback.message_id.in_([m.id for m in messages])))
+    } if messages else {}
+    out = []
+    for m in messages:
+        item = ChatMessageOut.model_validate(m)
+        if m.id in ratings:
+            item.feedback, item.feedback_comment = ratings[m.id].rating, ratings[m.id].comment
+        out.append(item)
+    return ChatHistory(session=ChatSessionOut.model_validate(chat), messages=out)
 
 
 @router.post("/{chat_id}/messages", response_model=ChatAnswer)
@@ -115,3 +127,38 @@ def ask_in_chat(
         message_id=assistant.id, answer=result.answer, answered=result.answered, citations=citations,
         generated_by=result.generated_by, note=result.note, searched_for=searched_for,
     )
+
+
+def _answer_or_404(db: Session, chat_id: uuid.UUID, message_id: uuid.UUID) -> ChatMessage:
+    get_chat_or_404(db, chat_id)
+    message = db.get(ChatMessage, message_id)
+    if message is None or message.session_id != chat_id:
+        raise HTTPException(404, "Message not found in this chat")
+    if message.role != "assistant":
+        raise HTTPException(400, "Only the assistant's answers can be rated")
+    return message
+
+
+@router.put("/{chat_id}/messages/{message_id}/feedback", response_model=FeedbackOut)
+def rate_answer(chat_id: uuid.UUID, message_id: uuid.UUID, body: FeedbackIn, db: Session = Depends(get_db)):
+    """Thumbs up or down on an answer. Sending it again replaces the earlier rating (one rating per answer)."""
+    _answer_or_404(db, chat_id, message_id)
+    row = db.scalar(select(MessageFeedback).where(MessageFeedback.message_id == message_id))
+    if row is None:
+        row = MessageFeedback(message_id=message_id, rating=body.rating, comment=body.comment)
+        db.add(row)
+    else:
+        row.rating, row.comment = body.rating, body.comment
+    db.commit()
+    return FeedbackOut(message_id=message_id, rating=row.rating, comment=row.comment)
+
+
+@router.delete("/{chat_id}/messages/{message_id}/feedback", status_code=204)
+def clear_rating(chat_id: uuid.UUID, message_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Take a rating back. Safe to call when there is none."""
+    _answer_or_404(db, chat_id, message_id)
+    row = db.scalar(select(MessageFeedback).where(MessageFeedback.message_id == message_id))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return Response(status_code=204)

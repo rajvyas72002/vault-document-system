@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import FeedbackBar from "../../components/FeedbackBar";
 
 export default function InsightsPage() {
   const [docs, setDocs] = useState([]);
@@ -94,6 +95,15 @@ export default function InsightsPage() {
           <ul>{insight.key_points.map((k, i) => <li key={i}>{k}</li>)}</ul>
           <div>{insight.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
           {insight.note && <p className="muted">{insight.note}</p>}
+          <FeedbackBar
+            key={`${insight.document_id}-${insight.updated_at}`}
+            label="Was this summary helpful?"
+            value={insight.feedback}
+            savedComment={insight.feedback_comment}
+            onRate={(rating, text) => api.rateInsight(insight.document_id, rating, text)}
+            onClear={() => api.clearInsightRating(insight.document_id)}
+            onChange={(rating, text) => setInsight((i) => ({ ...i, feedback: rating, feedback_comment: text }))}
+          />
         </div>
       )}
     </>

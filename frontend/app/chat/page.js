@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
+import FeedbackBar from "../../components/FeedbackBar";
 
 function Citations({ items }) {
   if (!items || items.length === 0) return null;
@@ -14,7 +15,7 @@ function Citations({ items }) {
   ));
 }
 
-function Message({ m }) {
+function Message({ m, chatId, onRated }) {
   const refused = m.role === "assistant" && m.answered === false;
   return (
     <div className={`msg ${m.role} ${refused ? "refused" : ""}`}>
@@ -26,6 +27,16 @@ function Message({ m }) {
       </div>
       <div>{m.content}</div>
       <Citations items={m.citations} />
+      {m.role === "assistant" && m.id !== "pending" && (
+        <FeedbackBar
+          label="Was this answer helpful?"
+          value={m.feedback}
+          savedComment={m.feedback_comment}
+          onRate={(rating, text) => api.rateAnswer(chatId, m.id, rating, text)}
+          onClear={() => api.clearRating(chatId, m.id)}
+          onChange={(rating, text) => onRated(m.id, rating, text)}
+        />
+      )}
     </div>
   );
 }
@@ -60,6 +71,11 @@ export default function ChatPage() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // keep the thumbs in the page state so the buttons update at once, without reloading the history
+  function onRated(messageId, rating, comment) {
+    setMessages((ms) => ms.map((x) => (x.id === messageId ? { ...x, feedback: rating, feedback_comment: comment } : x)));
+  }
 
   async function openChat(id) {
     setChatId(id);
@@ -148,7 +164,7 @@ export default function ChatPage() {
           ) : (
             <>
               {messages.length === 0 && <div className="muted">Ask your first question.</div>}
-              {messages.map((m) => <Message key={m.id} m={m} />)}
+              {messages.map((m) => <Message key={m.id} m={m} chatId={chatId} onRated={onRated} />)}
               <div ref={bottom} />
               {error && <div className="error">{error}</div>}
               <form onSubmit={onSend} className="row" style={{ marginTop: 12 }}>

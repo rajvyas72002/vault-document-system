@@ -151,3 +151,39 @@ class DocumentInsight(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class MessageFeedback(Base):
+    """A thumbs up / thumbs down on one assistant answer. At most one per answer; changing your mind replaces it."""
+
+    __tablename__ = "message_feedback"
+    __table_args__ = (CheckConstraint("rating IN ('up','down')", name="ck_message_feedback_rating"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_messages.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    rating: Mapped[str] = mapped_column(String(4))
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InsightFeedback(Base):
+    """A thumbs up / down on the current summary of one document. Cleared when the summary is regenerated."""
+
+    __tablename__ = "insight_feedback"
+    __table_args__ = (CheckConstraint("rating IN ('up','down')", name="ck_insight_feedback_rating"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    rating: Mapped[str] = mapped_column(String(4))
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

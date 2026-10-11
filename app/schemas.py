@@ -127,6 +127,8 @@ class ChatMessageOut(BaseModel):
     citations: List[CitationOut] = []
     generated_by: Optional[str] = None
     latency_ms: Optional[int] = None
+    feedback: Optional[Literal["up", "down"]] = None   # the user's thumbs on this answer, if any
+    feedback_comment: Optional[str] = None
     created_at: datetime
 
     @field_validator("citations", mode="before")
@@ -157,6 +159,8 @@ class InsightOut(BaseModel):
     options: dict
     generated_by: str
     note: str
+    feedback: Optional[Literal["up", "down"]] = None   # the user's thumbs on this summary, if any
+    feedback_comment: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -219,3 +223,54 @@ class JobAccepted(BaseModel):
     document_id: uuid.UUID
     status: str
     status_url: str
+
+
+class FeedbackIn(BaseModel):
+    rating: Literal["up", "down"]
+    comment: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("comment")
+    @classmethod
+    def blank_means_none(cls, value):
+        value = (value or "").strip()
+        return value or None
+
+
+class FeedbackOut(BaseModel):
+    message_id: uuid.UUID
+    rating: Literal["up", "down"]
+    comment: Optional[str] = None
+
+
+class DownvotedAnswer(BaseModel):
+    message_id: uuid.UUID
+    question: Optional[str] = None
+    answer: str
+    answered: Optional[bool] = None
+    comment: Optional[str] = None
+    created_at: datetime
+
+
+class InsightFeedbackOut(BaseModel):
+    document_id: uuid.UUID
+    rating: Literal["up", "down"]
+    comment: Optional[str] = None
+
+
+class SummaryFeedbackStats(BaseModel):
+    summaries_total: int
+    rated: int
+    thumbs_up: int
+    thumbs_down: int
+    satisfaction_rate: Optional[float] = None
+
+
+class FeedbackMetrics(BaseModel):
+    summaries: Optional[SummaryFeedbackStats] = None   # thumbs on document summaries (Insights page)
+    answers_total: int
+    rated: int
+    thumbs_up: int
+    thumbs_down: int
+    satisfaction_rate: Optional[float] = None   # thumbs_up / rated; None until someone rates
+    rated_share: Optional[float] = None         # rated / answers_total: how many answers got any feedback
+    recent_thumbs_down: List[DownvotedAnswer] = []

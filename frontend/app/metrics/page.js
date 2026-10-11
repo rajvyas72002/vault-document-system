@@ -23,7 +23,7 @@ export default function MetricsPage() {
 
   if (error) return <div className="error">{error}</div>;
   if (!m) return <div className="muted">Loading...</div>;
-  const { documents: d, processing: p, system: s } = m;
+  const { documents: d, processing: p, system: s, feedback: f } = m;
 
   return (
     <>
@@ -92,6 +92,41 @@ export default function MetricsPage() {
         <p className="muted">
           By generator: {Object.entries(s.answers_by_generator).map(([k, v]) => `${k} ${v}`).join(", ") || "-"}
         </p>
+      </div>
+
+      <div className="card">
+        <h2>User feedback</h2>
+        <div className="grid">
+          <Stat label="satisfaction (👍 / rated)" value={pct(f.satisfaction_rate)} />
+          <Stat label="👍 helpful" value={f.thumbs_up} />
+          <Stat label="👎 not helpful" value={f.thumbs_down} />
+          <Stat label="answers rated" value={`${f.rated} of ${f.answers_total}`} />
+          <Stat label="rated share" value={pct(f.rated_share)} />
+        </div>
+        {f.rated === 0 && <p className="muted">No ratings yet. Use 👍 / 👎 under an answer in Chat.</p>}
+        {f.summaries && (
+          <p className="muted">
+            Document summaries (Insights): {f.summaries.rated} of {f.summaries.summaries_total} rated ·
+            👍 {f.summaries.thumbs_up} · 👎 {f.summaries.thumbs_down} · satisfaction {pct(f.summaries.satisfaction_rate)}
+          </p>
+        )}
+        {f.recent_thumbs_down.length > 0 && (
+          <>
+            <p className="muted">Latest 👎, so they can be reviewed:</p>
+            <table>
+              <thead><tr><th>Question</th><th>Answer</th><th>Comment</th></tr></thead>
+              <tbody>
+                {f.recent_thumbs_down.map((x) => (
+                  <tr key={x.message_id}>
+                    <td>{x.question ?? "-"}</td>
+                    <td>{x.answer}</td>
+                    <td>{x.comment ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
     </>
   );

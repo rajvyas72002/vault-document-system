@@ -51,16 +51,29 @@ export const api = {
   chatHistory: async (id) => (await request(`/chats/${id}/history`)).data,
   sendMessage: async (id, question) =>
     (await request(`/chats/${id}/messages`, json("POST", { question }))).data,
+  // thumbs up / down on one answer; sending again replaces it, clearRating takes it back
+  rateAnswer: async (chatId, messageId, rating, comment) =>
+    (await request(`/chats/${chatId}/messages/${messageId}/feedback`, json("PUT", { rating, comment: comment || null }))).data,
+  clearRating: async (chatId, messageId) => {
+    await request(`/chats/${chatId}/messages/${messageId}/feedback`, { method: "DELETE" });
+  },
+  // thumbs up / down on a document's current summary
+  rateInsight: async (documentId, rating, comment) =>
+    (await request(`/documents/${documentId}/insights/feedback`, json("PUT", { rating, comment: comment || null }))).data,
+  clearInsightRating: async (documentId) => {
+    await request(`/documents/${documentId}/insights/feedback`, { method: "DELETE" });
+  },
   getInsights: async (id) => (await request(`/documents/${id}/insights`)).data,
   generateInsights: async (id, options) =>
     (await request(`/documents/${id}/insights`, json("POST", options))).data,
   metrics: async () => {
-    const [documents, processing, system] = await Promise.all([
+    const [documents, processing, system, feedback] = await Promise.all([
       request("/metrics/documents"),
       request("/metrics/processing"),
       request("/metrics/system"),
+      request("/metrics/feedback"),
     ]);
-    return { documents: documents.data, processing: processing.data, system: system.data };
+    return { documents: documents.data, processing: processing.data, system: system.data, feedback: feedback.data };
   },
 };
 

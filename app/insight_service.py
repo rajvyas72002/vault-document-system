@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.insights import InsightGenerator, InsightOptions
-from app.models import Document, DocumentChunk, DocumentInsight
+from app.models import Document, DocumentChunk, DocumentInsight, InsightFeedback
 
 
 def store_insights(db: Session, doc: Document, generator: InsightGenerator, options: InsightOptions) -> DocumentInsight:
@@ -19,6 +19,9 @@ def store_insights(db: Session, doc: Document, generator: InsightGenerator, opti
     insight.category, insight.tags = data.category, data.tags
     insight.options = {"length": options.length, "focus": options.focus, "tone": options.tone}
     insight.generated_by, insight.note = data.generated_by, data.note
+    old = db.scalar(select(InsightFeedback).where(InsightFeedback.document_id == doc.id))
+    if old is not None:      # a rating belongs to the summary it was given to; this is a new summary
+        db.delete(old)
     db.commit()
     db.refresh(insight)
     return insight

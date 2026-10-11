@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.jobs import STUCK_AFTER_MINUTES
-from app.models import ChatMessage, ChatSession, Document, DocumentChunk, DocumentInsight, ProcessingJob
-from app.schemas import DocumentMetrics, JobOut, ProcessingMetrics, SystemMetrics
+from app.models import ChatMessage, ChatSession, Document, DocumentChunk, DocumentInsight, InsightFeedback, MessageFeedback, ProcessingJob
+from app.schemas import (
+    DocumentMetrics, DownvotedAnswer, FeedbackMetrics, JobOut, ProcessingMetrics, SummaryFeedbackStats, SystemMetrics,
+)
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -102,4 +104,37 @@ def system_metrics(db: Session = Depends(get_db), settings: Settings = Depends(g
         avg_answer_latency_ms=round(sum(latencies) / len(latencies), 1) if latencies else None,
         p95_answer_latency_ms=percentile(latencies, 95),
         answers_by_generator={(k or "unknown"): v for k, v in by_generator.items()},
+    )
+
+
+@router.get("/feedback", response_model=FeedbackMetrics)
+def feedback_metrics(db: Session = Depends(get_db)):
+    """User satisfaction: thumbs up / down on answers, and the latest thumbs-down so problems can be looked at."""
+    by_rating = dict(db.execute(select(MessageFeedback.rating, func.count()).group_by(MessageFeedback.rating)).all())
+    up, down = by_rating.get("up", 0), by_rating.get("down", 0)
+    rated = up + down
+    answers = _count(db, select(func.count()).select_from(ChatMessage).where(ChatMessage.role == "assistant"))
+    recent = []
+    rows = db.execute(
+        select(MessageFeedback, ChatMessage).join(ChatMessage, ChatMessage.id == MessageFeedback.message_id)
+        .where(MessageFeedback.rating == "down").order_by(MessageFeedback.updated_at.desc()).limit(5)
+    ).all()
+    for fb, msg in rows:
+        asked = db.scalar(select(ChatMessage.content).where(
+            ChatMessage.session_id == msg.session_id, ChatMessage.seq == msg.seq - 1, ChatMessage.role == "user"))
+        recent.append(DownvotedAnswer(message_id=msg.id, question=asked, answer=msg.content, answered=msg.answered,
+                                      comment=fb.comment, created_at=fb.updated_at))
+    s_by = dict(db.execute(select(InsightFeedback.rating, func.count()).group_by(InsightFeedback.rating)).all())
+    s_up, s_down = s_by.get("up", 0), s_by.get("down", 0)
+    summaries = SummaryFeedbackStats(
+        summaries_total=_count(db, select(func.count()).select_from(DocumentInsight)),
+        rated=s_up + s_down, thumbs_up=s_up, thumbs_down=s_down,
+        satisfaction_rate=round(s_up / (s_up + s_down), 4) if (s_up + s_down) else None,
+    )
+    return FeedbackMetrics(
+        summaries=summaries,
+        answers_total=answers, rated=rated, thumbs_up=up, thumbs_down=down,
+        satisfaction_rate=round(up / rated, 4) if rated else None,
+        rated_share=round(rated / answers, 4) if answers else None,
+        recent_thumbs_down=recent,
     )
